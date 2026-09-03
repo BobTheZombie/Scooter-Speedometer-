@@ -18,6 +18,7 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Dimmed album artwork automatically becomes the dashboard background
 - Destination search with Google Maps, Waze, or another installed navigation app
 - Movable speed and music dashboard overlay that remains visible during navigation
+- GPS-based live weather widget with temperature, conditions, rain chance, and wind
 
 ## Install
 
@@ -32,3 +33,7 @@ Tap **Enable Music Controls** in the app and allow **Scooter Speedometer** under
 ## Navigation overlay
 
 Tap **Navigate**, grant **Display over other apps** once, enter a destination, and choose Google Maps, Waze, or another navigation app. Navigation opens normally with a compact scooter dashboard floating above it. Drag the speed section vertically to reposition the dashboard, or tap **×** to close it.
+
+## Weather widget
+
+Current weather is loaded automatically from the scooter's GPS position and refreshed about every 10 minutes. The widget shows temperature, conditions, precipitation probability, wind direction, and wind speed. Recent weather remains visible if the connection drops. Weather data is provided by Open-Meteo.
