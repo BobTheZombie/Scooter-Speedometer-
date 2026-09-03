@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<link rel="stylesheet" href="leaflet.css"><style>html,body,#map{width:100%;height:100%;margin:0;background:#071017}.leaflet-control-attribution{font-size:10px}</style></head>
+<body><div id="map"></div><script src="leaflet.js"></script><script>
+const map=L.map('map',{zoomControl:false}).setView([42.2917,-85.5872],13);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(map);
+let rider=null,accuracy=null,route=null,first=true;
+function updateLocation(lat,lon,bearing,meters){const p=[lat,lon];if(!rider){rider=L.circleMarker(p,{radius:9,color:'#fff',weight:3,fillColor:'#00e5ff',fillOpacity:1}).addTo(map);accuracy=L.circle(p,{radius:meters,color:'#00e5ff',weight:1,fillOpacity:.07}).addTo(map)}else{rider.setLatLng(p);accuracy.setLatLng(p).setRadius(meters)}if(first){map.setView(p,16);first=false}else map.panTo(p,{animate:true,duration:.4})}
+function setRoute(geometry){if(route)map.removeLayer(route);route=L.geoJSON({type:'Feature',properties:{},geometry:geometry},{style:{color:'#00e5ff',weight:7,opacity:.9}}).addTo(map);map.fitBounds(route.getBounds(),{padding:[55,90]})}
+</script></body></html>
