@@ -318,7 +318,100 @@ public class MainActivity extends Activity implements LocationListener {
         private boolean resizingWeather;
         private float weatherWidthFraction = prefs.getFloat("weather_width", .355f);
         private float weatherHeightFraction = prefs.getFloat("weather_height", .085f);
-        SpeedView(Context context) { super(context); setBackgroundColor(Color.rgb(4, 8, 12)); }
+        private DashboardLayout dashboardLayout;
+        private boolean editingDashboard;
+        private int editingSection;
+        private boolean resizingSection;
+        private final RectF mediaSlot = new RectF(), gaugeSlot = new RectF(), navigationSlot = new RectF();
+        private float editStartX, editStartY;
+        private final RectF editStartRect = new RectF();
+        private boolean customizePressed;
+        SpeedView(Context context) {
+            super(context);
+            setBackgroundColor(Color.rgb(4, 8, 12));
+            boolean landscape = getResources().getConfiguration().orientation ==
+                    android.content.res.Configuration.ORIENTATION_LANDSCAPE;
+            dashboardLayout = DashboardLayout.decode(prefs.getString("dashboard_layout", ""),
+                    DashboardLayout.preset(landscape, false));
+        }
+
+        private RectF slot(RectF normalized, float w, float h, RectF out) {
+            out.set(normalized.left * w, normalized.top * h, normalized.right * w, normalized.bottom * h);
+            return out;
+        }
+
+        private int beginTransform(Canvas c, RectF target, RectF base) {
+            int save = c.save();
+            c.clipRect(target);
+            c.translate(target.left, target.top);
+            c.scale(target.width() / base.width(), target.height() / base.height());
+            c.translate(-base.left, -base.top);
+            return save;
+        }
+
+        private int accentColor() {
+            int[] colors = {Color.rgb(0,229,255), Color.rgb(105,255,120),
+                    Color.rgb(255,174,0), Color.rgb(190,90,255), Color.rgb(255,65,90)};
+            return colors[Math.max(0, Math.min(colors.length - 1, dashboardLayout.gaugeColor))];
+        }
+
+        private void saveDashboard() {
+            prefs.edit().putString("dashboard_layout", dashboardLayout.encode()).apply();
+        }
+
+        private void applyPreset(boolean landscape, boolean compact) {
+            DashboardLayout preset = DashboardLayout.preset(landscape, compact);
+            preset.albumAlpha = dashboardLayout.albumAlpha;
+            preset.gaugeColor = dashboardLayout.gaugeColor;
+            preset.gaugeStyle = dashboardLayout.gaugeStyle;
+            dashboardLayout = preset;
+            saveDashboard(); invalidate();
+        }
+
+        private void showProfilePicker(boolean save) {
+            String[] profiles = {"Layout 1", "Layout 2", "Layout 3"};
+            new AlertDialog.Builder(MainActivity.this).setTitle(save ? "Save layout" : "Load layout")
+                    .setItems(profiles, (dialog, which) -> {
+                        String key = "dashboard_profile_" + which;
+                        if (save) prefs.edit().putString(key, dashboardLayout.encode()).apply();
+                        else {
+                            String stored = prefs.getString(key, "");
+                            if (!stored.isEmpty()) {
+                                dashboardLayout = DashboardLayout.decode(stored, dashboardLayout);
+                                saveDashboard(); invalidate();
+                            }
+                        }
+                    }).show();
+        }
+
+        private void showDashboardCustomizer() {
+            String[] choices = {editingDashboard ? "Finish editing" : "Drag & resize sections",
+                    "Full portrait preset", "Compact portrait preset", "Full landscape preset",
+                    "Compact landscape preset", "Album-art transparency", "Gauge color",
+                    "Gauge style", "Save layout", "Load layout"};
+            new AlertDialog.Builder(MainActivity.this).setTitle("Customize dashboard")
+                    .setItems(choices, (dialog, which) -> {
+                        if (which == 0) { editingDashboard = !editingDashboard; editingSection = 0; invalidate(); }
+                        else if (which >= 1 && which <= 4) applyPreset(which >= 3, which == 2 || which == 4);
+                        else if (which == 5) {
+                            String[] levels = {"Subtle · 25%", "Balanced · 45%", "Bold · 65%", "Maximum · 85%"};
+                            new AlertDialog.Builder(MainActivity.this).setTitle("Album-art background")
+                                    .setSingleChoiceItems(levels, Math.max(0, Math.min(3, (dashboardLayout.albumAlpha - 50) / 50)),
+                                            (d, item) -> { dashboardLayout.albumAlpha = new int[]{64,115,166,217}[item]; saveDashboard(); invalidate(); d.dismiss(); }).show();
+                        } else if (which == 6) {
+                            String[] colors = {"Cyan", "Lime", "Amber", "Purple", "Red"};
+                            new AlertDialog.Builder(MainActivity.this).setTitle("Gauge color")
+                                    .setSingleChoiceItems(colors, dashboardLayout.gaugeColor,
+                                            (d, item) -> { dashboardLayout.gaugeColor = item; saveDashboard(); invalidate(); d.dismiss(); }).show();
+                        } else if (which == 7) {
+                            String[] styles = {"Classic arc", "Dual arc", "Minimal"};
+                            new AlertDialog.Builder(MainActivity.this).setTitle("Gauge style")
+                                    .setSingleChoiceItems(styles, dashboardLayout.gaugeStyle,
+                                            (d, item) -> { dashboardLayout.gaugeStyle = item; saveDashboard(); invalidate(); d.dismiss(); }).show();
+                        } else if (which == 8) showProfilePicker(true);
+                        else if (which == 9) showProfilePicker(false);
+                    }).show();
+        }
 
         private void text(Canvas c, String value, float x, float y, float size, int color, Paint.Align align, boolean bold) {
             paint.setStyle(Paint.Style.FILL); paint.setColor(color); paint.setTextSize(size); paint.setTextAlign(align);
@@ -539,10 +632,16 @@ public class MainActivity extends Activity implements LocationListener {
             drawWeatherAtmosphere(c, w, h);
             Bitmap art = albumArt();
             if (art != null && mediaController != null) {
-                drawCover(c, art, new RectF(0, 0, w, h), 105);
+                drawCover(c, art, new RectF(0, 0, w, h), dashboardLayout.albumAlpha);
                 paint.setColor(Color.argb(150, 0, 5, 8)); c.drawRect(0, 0, w, h, paint);
             }
+            slot(dashboardLayout.media, w, h, mediaSlot);
+            slot(dashboardLayout.gauge, w, h, gaugeSlot);
+            slot(dashboardLayout.navigation, w, h, navigationSlot);
+            RectF baseMedia = new RectF(w * .035f, h * .025f, w * .965f, h * .245f);
+            int mediaSave = beginTransform(c, mediaSlot, baseMedia);
             drawMediaPanel(c, w, h, scale);
+            c.restoreToCount(mediaSave);
             drawWeatherPanel(c, w, h, scale);
             drawAlertBanner(c, w, h, scale);
             boolean fresh = lastFixElapsed > 0 && SystemClock.elapsedRealtime() - lastFixElapsed < 3500;
@@ -552,29 +651,43 @@ public class MainActivity extends Activity implements LocationListener {
             float shown = smoothedMps * (metric ? 3.6f : 2.2369363f);
             float maxShown = maxMps * (metric ? 3.6f : 2.2369363f);
             double tripShown = tripMeters / (metric ? 1000.0 : 1609.344);
+            RectF baseGauge = new RectF(w * .10f, h * .38f, w * .90f, h * .72f);
+            int gaugeSave = beginTransform(c, gaugeSlot, baseGauge);
             float radius = Math.min(w * .38f, h * .245f);
             arc.set(cx - radius, h * .49f - radius, cx + radius, h * .49f + radius);
             paint.setStyle(Paint.Style.STROKE); paint.setStrokeCap(Paint.Cap.ROUND);
-            paint.setStrokeWidth(15f * scale); paint.setColor(Color.rgb(27, 42, 51));
-            c.drawArc(arc, 145, 250, false, paint);
+            paint.setStrokeWidth(dashboardLayout.gaugeStyle == 2 ? 5f * scale : 15f * scale);
+            paint.setColor(Color.rgb(27, 42, 51));
+            if (dashboardLayout.gaugeStyle != 2) c.drawArc(arc, 145, 250, false, paint);
             float limit = metric ? 130f : 80f;
-            paint.setColor(shown > limit * .82f ? Color.rgb(255, 179, 0) : Color.rgb(0, 229, 255));
+            paint.setColor(shown > limit * .82f ? Color.rgb(255, 179, 0) : accentColor());
             c.drawArc(arc, 145, Math.min(shown / limit, 1f) * 250f, false, paint);
+            if (dashboardLayout.gaugeStyle == 1) {
+                paint.setStrokeWidth(4f * scale); paint.setColor(Color.argb(130, Color.red(accentColor()), Color.green(accentColor()), Color.blue(accentColor())));
+                RectF inner = new RectF(arc.left + 22f * scale, arc.top + 22f * scale,
+                        arc.right - 22f * scale, arc.bottom - 22f * scale);
+                c.drawArc(inner, 145, Math.min(shown / limit, 1f) * 250f, false, paint);
+            }
             text(c, fresh ? String.format(Locale.US, "%.0f", shown) : "--", cx, h * .535f,
                     Math.min(150f * scale, h * .18f), Color.WHITE, Paint.Align.CENTER, true);
             text(c, metric ? "KM/H" : "MPH", cx, h * .615f, 27f * scale,
-                    Color.rgb(0, 229, 255), Paint.Align.CENTER, true);
+                    accentColor(), Paint.Align.CENTER, true);
             String status; int statusColor;
             if (!permission) { status = "TAP GAUGE TO ALLOW GPS"; statusColor = Color.rgb(255,179,0); }
             else if (!gpsOn) { status = "TURN ON GPS"; statusColor = Color.rgb(255,179,0); }
             else if (!fresh) { status = "SEARCHING FOR GPS  •  " + satellites + " SAT"; statusColor = Color.rgb(255,179,0); }
             else { status = "GPS LOCK  •  " + satellites + " SAT  •  ±" + Math.round(accuracy) + "m"; statusColor = Color.rgb(74,222,128); }
             text(c, status, cx, h * .71f, 17f * scale, statusColor, Paint.Align.CENTER, true);
+            c.restoreToCount(gaugeSave);
+
+            RectF baseNavigation = new RectF(w * .36f, h * .725f, w * .64f, h * .77f);
+            int navSave = beginTransform(c, navigationSlot, baseNavigation);
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.argb(220, 0, 126, 150));
+            paint.setColor(Color.argb(220, Color.red(accentColor()) / 2, Color.green(accentColor()) / 2, Color.blue(accentColor()) / 2));
             RectF navButton = new RectF(w * .36f, h * .725f, w * .64f, h * .77f);
             c.drawRoundRect(navButton, 18f * scale, 18f * scale, paint);
             text(c, "➤  NAVIGATE", cx, h * .756f, 15f * scale, Color.WHITE, Paint.Align.CENTER, true);
+            c.restoreToCount(navSave);
             paint.setColor(Color.rgb(52, 69, 78)); paint.setStrokeWidth(2f * scale);
             c.drawLine(w * .10f, h * .785f, w * .90f, h * .785f, paint);
             text(c, "MAX", w * .27f, h * .825f, 16f * scale, Color.rgb(160,180,190), Paint.Align.CENTER, true);
@@ -585,11 +698,65 @@ public class MainActivity extends Activity implements LocationListener {
                     w * .73f, h * .885f, 26f * scale, Color.WHITE, Paint.Align.CENTER, true);
             text(c, "Tap gauge: MPH/KM/H  •  Hold gauge: reset", cx, h * .965f,
                     13f * scale, Color.rgb(120,145,157), Paint.Align.CENTER, false);
+            paint.setColor(Color.argb(225, 8, 28, 36));
+            RectF customize = new RectF(w * .405f, h * .91f, w * .595f, h * .952f);
+            c.drawRoundRect(customize, 14f * scale, 14f * scale, paint);
+            text(c, editingDashboard ? "✓ DONE" : "⚙ CUSTOMIZE", cx, h * .939f, 12f * scale,
+                    accentColor(), Paint.Align.CENTER, true);
+            if (editingDashboard) drawEditorOverlay(c, scale);
+        }
+
+        private void drawEditorOverlay(Canvas c, float scale) {
+            RectF[] sections = {mediaSlot, gaugeSlot, navigationSlot};
+            String[] names = {"MEDIA", "SPEEDOMETER", "NAVIGATION"};
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(3f * scale);
+            for (int i = 0; i < sections.length; i++) {
+                RectF section = sections[i];
+                paint.setColor(i + 1 == editingSection ? Color.WHITE : accentColor());
+                c.drawRoundRect(section, 12f * scale, 12f * scale, paint);
+                paint.setStyle(Paint.Style.FILL);
+                text(c, names[i], section.left + 8f * scale, section.top + 17f * scale,
+                        11f * scale, Color.WHITE, Paint.Align.LEFT, true);
+                c.drawCircle(section.right - 9f * scale, section.bottom - 9f * scale, 8f * scale, paint);
+                paint.setStyle(Paint.Style.STROKE);
+            }
+            paint.setStyle(Paint.Style.FILL);
+            text(c, "Drag a section • drag its corner dot to resize", getWidth() * .5f,
+                    getHeight() * .985f, 11f * scale, Color.WHITE, Paint.Align.CENTER, true);
+        }
+
+        private RectF editableRect(int section) {
+            return section == 1 ? dashboardLayout.media : section == 2 ? dashboardLayout.gauge : dashboardLayout.navigation;
+        }
+
+        private void clampEditedRect(RectF rect, float minWidth, float minHeight) {
+            if (rect.width() < minWidth) rect.right = rect.left + minWidth;
+            if (rect.height() < minHeight) rect.bottom = rect.top + minHeight;
+            if (rect.left < .01f) rect.offset(.01f - rect.left, 0);
+            if (rect.top < .01f) rect.offset(0, .01f - rect.top);
+            if (rect.right > .99f) rect.offset(.99f - rect.right, 0);
+            if (rect.bottom > .90f) rect.offset(0, .90f - rect.bottom);
         }
 
         @Override public boolean onTouchEvent(MotionEvent e) {
             if (e.getAction() == MotionEvent.ACTION_DOWN) {
                 downAt = SystemClock.elapsedRealtime(); downX = e.getX(); downY = e.getY();
+                float w = getWidth(), h = getHeight();
+                customizePressed = e.getX() >= w * .405f && e.getX() <= w * .595f &&
+                        e.getY() >= h * .90f && e.getY() <= h * .96f;
+                if (editingDashboard && !customizePressed) {
+                    RectF[] sections = {mediaSlot, gaugeSlot, navigationSlot};
+                    editingSection = 0;
+                    for (int i = sections.length - 1; i >= 0; i--) if (sections[i].contains(e.getX(), e.getY())) {
+                        editingSection = i + 1;
+                        float grip = Math.max(34f * getResources().getDisplayMetrics().density,
+                                Math.min(sections[i].width(), sections[i].height()) * .22f);
+                        resizingSection = e.getX() > sections[i].right - grip && e.getY() > sections[i].bottom - grip;
+                        editStartX = e.getX(); editStartY = e.getY(); editStartRect.set(editableRect(editingSection));
+                        break;
+                    }
+                    invalidate(); return true;
+                }
                 float grip = Math.max(32f * getResources().getDisplayMetrics().density,
                         Math.min(weatherPanelRect.width(), weatherPanelRect.height()) * .32f);
                 resizingWeather = e.getX() >= weatherPanelRect.right - grip &&
@@ -597,6 +764,16 @@ public class MainActivity extends Activity implements LocationListener {
                         e.getY() >= weatherPanelRect.bottom - grip &&
                         e.getY() <= weatherPanelRect.bottom + grip * .25f;
                 return true;
+            }
+            if (e.getAction() == MotionEvent.ACTION_MOVE && editingDashboard && editingSection != 0) {
+                RectF rect = editableRect(editingSection);
+                float dx = (e.getX() - editStartX) / getWidth();
+                float dy = (e.getY() - editStartY) / getHeight();
+                rect.set(editStartRect);
+                if (resizingSection) { rect.right += dx; rect.bottom += dy; }
+                else rect.offset(dx, dy);
+                clampEditedRect(rect, editingSection == 3 ? .16f : .24f, editingSection == 3 ? .04f : .12f);
+                invalidate(); return true;
             }
             if (e.getAction() == MotionEvent.ACTION_MOVE && resizingWeather) {
                 float w = getWidth(), h = getHeight();
@@ -607,26 +784,33 @@ public class MainActivity extends Activity implements LocationListener {
             }
             if (e.getAction() == MotionEvent.ACTION_UP) {
                 float w = getWidth(), h = getHeight();
-                if (resizingWeather) {
+                if (customizePressed && Math.hypot(e.getX() - downX, e.getY() - downY) < 40f) {
+                    customizePressed = false;
+                    if (editingDashboard) { editingDashboard = false; editingSection = 0; saveDashboard(); invalidate(); }
+                    else showDashboardCustomizer();
+                } else if (editingDashboard && editingSection != 0) {
+                    saveDashboard(); editingSection = 0; resizingSection = false; invalidate();
+                } else if (resizingWeather) {
                     prefs.edit().putFloat("weather_width", weatherWidthFraction)
                             .putFloat("weather_height", weatherHeightFraction).apply();
                     resizingWeather = false;
-                } else if (e.getY() <= h * .27f) {
+                } else if (mediaSlot.contains(e.getX(), e.getY())) {
+                    float sourceX = w * (.035f + (e.getX() - mediaSlot.left) / mediaSlot.width() * .93f);
+                    float sourceY = h * (.025f + (e.getY() - mediaSlot.top) / mediaSlot.height() * .22f);
                     if (!hasMediaAccess()) openMediaAccessSettings();
-                    else if (e.getX() >= w * .46f && e.getY() >= h * .12f) {
-                        if (e.getX() < w * .585f) mediaPrevious();
-                        else if (e.getX() < w * .695f) mediaPlayPause();
-                        else if (e.getX() < w * .805f) mediaNext();
-                        else if (e.getX() < w * .91f) adjustMusicVolume(AudioManager.ADJUST_LOWER);
+                    else if (sourceX >= w * .46f && sourceY >= h * .12f) {
+                        if (sourceX < w * .585f) mediaPrevious();
+                        else if (sourceX < w * .695f) mediaPlayPause();
+                        else if (sourceX < w * .805f) mediaNext();
+                        else if (sourceX < w * .91f) adjustMusicVolume(AudioManager.ADJUST_LOWER);
                         else adjustMusicVolume(AudioManager.ADJUST_RAISE);
                     }
-                } else if (e.getY() >= h * .71f && e.getY() <= h * .79f &&
-                        e.getX() >= w * .32f && e.getX() <= w * .68f) {
+                } else if (navigationSlot.contains(e.getX(), e.getY())) {
                     beginNavigation();
                 } else if (e.getY() >= h * .25f && e.getY() <= h * .37f &&
                         e.getX() >= w * .40f && weatherAlert != null && weatherAlert.active()) {
                     showWeatherAlert();
-                } else {
+                } else if (gaugeSlot.contains(e.getX(), e.getY())) {
                     long held = SystemClock.elapsedRealtime() - downAt;
                     if (held >= 1100 && Math.hypot(e.getX() - downX, e.getY() - downY) < 80) resetStats();
                     else if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
@@ -635,7 +819,9 @@ public class MainActivity extends Activity implements LocationListener {
                 }
                 performClick(); return true;
             }
-            if (e.getAction() == MotionEvent.ACTION_CANCEL) resizingWeather = false;
+            if (e.getAction() == MotionEvent.ACTION_CANCEL) {
+                resizingWeather = false; resizingSection = false; editingSection = 0; customizePressed = false;
+            }
             return true;
         }
         @Override public boolean performClick() { super.performClick(); return true; }
