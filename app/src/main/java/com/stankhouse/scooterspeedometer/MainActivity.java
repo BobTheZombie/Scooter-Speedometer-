@@ -12,9 +12,12 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.graphics.Shader;
 import android.location.GnssStatus;
 import android.location.Location;
 import android.location.LocationListener;
@@ -55,6 +58,7 @@ public class MainActivity extends Activity implements LocationListener {
     private boolean navigationPermissionPending;
     private WeatherRepository weatherRepository;
     private WeatherRepository.WeatherData weatherData;
+    private WeatherRepository.AlertData weatherAlert;
     private long lastWeatherRequest;
 
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
@@ -76,12 +80,19 @@ public class MainActivity extends Activity implements LocationListener {
         mediaSessionManager = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
         weatherRepository = new WeatherRepository(this);
         weatherData = weatherRepository.cached();
+        weatherAlert = weatherRepository.cachedAlert();
         speedView = new SpeedView(this);
         setContentView(speedView);
         enterImmersive();
-        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED)
-            requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_REQUEST);
-        else startGps();
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.POST_NOTIFICATIONS}, LOCATION_REQUEST);
+            else requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_REQUEST);
+        } else {
+            startGps();
+            if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 43);
+        }
     }
 
     private void enterImmersive() {
@@ -169,6 +180,14 @@ public class MainActivity extends Activity implements LocationListener {
     }
     private void mediaNext() { if (mediaController != null) mediaController.getTransportControls().skipToNext(); }
 
+    private void showWeatherAlert() {
+        if (weatherAlert == null || !weatherAlert.active()) return;
+        String details = weatherAlert.headline;
+        if (!TextUtils.isEmpty(weatherAlert.instruction)) details += "\n\n" + weatherAlert.instruction;
+        new AlertDialog.Builder(this).setTitle(weatherAlert.event)
+                .setMessage(details).setPositiveButton("Got it", null).show();
+    }
+
     private void beginNavigation() {
         if (!Settings.canDrawOverlays(this)) {
             navigationPermissionPending = true;
@@ -248,6 +267,10 @@ public class MainActivity extends Activity implements LocationListener {
             lastWeatherRequest = SystemClock.elapsedRealtime();
             weatherRepository.update(location.getLatitude(), location.getLongitude(), data -> {
                 weatherData = data;
+                speedView.invalidate();
+            });
+            weatherRepository.updateAlerts(location.getLatitude(), location.getLongitude(), alert -> {
+                weatherAlert = alert;
                 speedView.invalidate();
             });
         }
@@ -377,10 +400,97 @@ public class MainActivity extends Activity implements LocationListener {
                     w * .285f, h * .333f, 11f * scale, Color.rgb(205, 216, 222), Paint.Align.LEFT, false);
         }
 
+        private void drawWeatherAtmosphere(Canvas c, float w, float h) {
+            if (weatherData == null) return;
+            int code = weatherData.weatherCode;
+            long now = SystemClock.uptimeMillis();
+            boolean thunder = code >= 95;
+            boolean snow = (code >= 71 && code <= 77) || (code >= 85 && code <= 86);
+            boolean rain = (code >= 51 && code <= 67) || (code >= 80 && code <= 82);
+            boolean fog = code == 45 || code == 48;
+            int top = thunder ? Color.rgb(18, 22, 38) : rain ? Color.rgb(34, 55, 68) :
+                    snow ? Color.rgb(89, 112, 129) : fog ? Color.rgb(78, 91, 99) :
+                            code == 0 ? Color.rgb(14, 91, 153) : Color.rgb(48, 72, 88);
+            int bottom = thunder ? Color.rgb(3, 6, 16) : rain ? Color.rgb(8, 20, 29) :
+                    snow ? Color.rgb(25, 43, 58) : fog ? Color.rgb(27, 38, 44) :
+                            code == 0 ? Color.rgb(3, 34, 69) : Color.rgb(9, 24, 34);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setShader(new LinearGradient(0, 0, 0, h, top, bottom, Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, w, h, paint);
+            paint.setShader(null);
+
+            if (code == 0) {
+                float pulse = 1f + .05f * (float) Math.sin(now / 900.0);
+                for (int i = 5; i >= 1; i--) {
+                    paint.setColor(Color.argb(12 + i * 5, 255, 205, 70));
+                    c.drawCircle(w * .84f, h * .31f, w * (.04f + i * .025f) * pulse, paint);
+                }
+                paint.setColor(Color.argb(220, 255, 224, 105));
+                c.drawCircle(w * .84f, h * .31f, w * .045f, paint);
+            }
+
+            if (code >= 1 && code <= 3 || rain || thunder) {
+                paint.setColor(Color.argb(55, 225, 238, 245));
+                for (int i = 0; i < 7; i++) {
+                    float x = (float) ((i * w * .24 + now * (.006 + i * .0007)) % (w + w * .35)) - w * .18f;
+                    float y = h * (.16f + (i % 3) * .12f);
+                    float r = w * (.09f + (i % 2) * .025f);
+                    c.drawCircle(x, y, r, paint); c.drawCircle(x + r * .7f, y + r * .05f, r * .8f, paint);
+                }
+            }
+
+            if (rain || thunder) {
+                paint.setColor(Color.argb(thunder ? 145 : 105, 140, 210, 255));
+                paint.setStrokeWidth(Math.max(2f, w / 360f));
+                for (int i = 0; i < 55; i++) {
+                    float x = (float) ((i * 83L + now / 7L) % (long) (w + 40)) - 20;
+                    float y = (float) ((i * 137L + now / 3L) % (long) (h + 90)) - 90;
+                    c.drawLine(x, y, x - w * .018f, y + h * .045f, paint);
+                }
+            } else if (snow) {
+                paint.setColor(Color.argb(180, 245, 250, 255));
+                for (int i = 0; i < 42; i++) {
+                    float x = (float) ((i * 97L + now / (18L + i % 7)) % (long) (w + 30));
+                    float y = (float) ((i * 149L + now / (9L + i % 5)) % (long) (h + 30));
+                    c.drawCircle(x, y, 2f + i % 5, paint);
+                }
+            } else if (fog) {
+                for (int i = 0; i < 8; i++) {
+                    paint.setColor(Color.argb(22 + i * 3, 225, 235, 238));
+                    float y = h * (.12f + i * .105f);
+                    float offset = (float) ((now / (20 + i * 3)) % (long) (w * .2f));
+                    c.drawRoundRect(new RectF(-w * .2f + offset, y, w * .85f + offset, y + h * .035f), 30, 30, paint);
+                }
+            }
+
+            if (thunder && now % 6500L < 170L) {
+                paint.setColor(Color.argb(115, 220, 235, 255)); c.drawRect(0, 0, w, h, paint);
+                paint.setColor(Color.rgb(255, 240, 130)); paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(Math.max(6f, w / 85f));
+                Path bolt = new Path(); bolt.moveTo(w * .72f, h * .12f); bolt.lineTo(w * .60f, h * .37f);
+                bolt.lineTo(w * .70f, h * .37f); bolt.lineTo(w * .54f, h * .66f); c.drawPath(bolt, paint);
+                paint.setStyle(Paint.Style.FILL);
+            }
+            postInvalidateDelayed(80L);
+        }
+
+        private void drawAlertBanner(Canvas c, float w, float h, float scale) {
+            if (weatherAlert == null || !weatherAlert.active()) return;
+            int color = weatherAlert.severityRank() >= 3 ? Color.rgb(190, 32, 38) : Color.rgb(213, 109, 20);
+            RectF banner = new RectF(w * .42f, h * .265f, w * .955f, h * .35f);
+            paint.setColor(Color.argb(235, Color.red(color), Color.green(color), Color.blue(color)));
+            paint.setStyle(Paint.Style.FILL); c.drawRoundRect(banner, 18f * scale, 18f * scale, paint);
+            text(c, "⚠  " + ellipsize(weatherAlert.event.toUpperCase(Locale.US), 28), w * .445f,
+                    h * .302f, 15f * scale, Color.WHITE, Paint.Align.LEFT, true);
+            text(c, ellipsize(weatherAlert.headline, 62), w * .445f, h * .332f,
+                    10f * scale, Color.rgb(255, 232, 225), Paint.Align.LEFT, false);
+        }
+
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
             float w = getWidth(), h = getHeight(), cx = w / 2f;
             float scale = Math.min(w, h) / 500f;
+            drawWeatherAtmosphere(c, w, h);
             Bitmap art = albumArt();
             if (art != null && mediaController != null) {
                 drawCover(c, art, new RectF(0, 0, w, h), 105);
@@ -388,6 +498,7 @@ public class MainActivity extends Activity implements LocationListener {
             }
             drawMediaPanel(c, w, h, scale);
             drawWeatherPanel(c, w, h, scale);
+            drawAlertBanner(c, w, h, scale);
             boolean fresh = lastFixElapsed > 0 && SystemClock.elapsedRealtime() - lastFixElapsed < 3500;
             boolean permission = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
             boolean gpsOn = false;
@@ -446,6 +557,9 @@ public class MainActivity extends Activity implements LocationListener {
                 } else if (e.getY() >= h * .71f && e.getY() <= h * .79f &&
                         e.getX() >= w * .32f && e.getX() <= w * .68f) {
                     beginNavigation();
+                } else if (e.getY() >= h * .25f && e.getY() <= h * .37f &&
+                        e.getX() >= w * .40f && weatherAlert != null && weatherAlert.active()) {
+                    showWeatherAlert();
                 } else {
                     long held = SystemClock.elapsedRealtime() - downAt;
                     if (held >= 1100 && Math.hypot(e.getX() - downX, e.getY() - downY) < 80) resetStats();
