@@ -22,6 +22,7 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.MediaMetadata;
+import android.media.AudioManager;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
@@ -45,11 +46,13 @@ public class NavigationOverlayService extends Service implements LocationListene
     private WindowManager.LayoutParams windowParams;
     private OverlayView overlayView;
     private LocationManager locationManager;
+    private AudioManager audioManager;
     private MediaSessionManager mediaSessionManager;
     private MediaController mediaController;
     private MediaMetadata mediaMetadata;
     private PlaybackState playbackState;
     private float smoothedMps;
+    private final SpeedFilter speedFilter = new SpeedFilter();
     private SharedPreferences prefs;
     private WeatherRepository weatherRepository;
     private WeatherRepository.WeatherData weatherData;
@@ -68,6 +71,7 @@ public class NavigationOverlayService extends Service implements LocationListene
         super.onCreate();
         prefs = getSharedPreferences("speedometer", MODE_PRIVATE);
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         mediaSessionManager = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
         weatherRepository = new WeatherRepository(this);
         weatherData = weatherRepository.cached();
@@ -183,25 +187,34 @@ public class NavigationOverlayService extends Service implements LocationListene
         return playbackState.getState() == PlaybackState.STATE_PLAYING || playbackState.getState() == PlaybackState.STATE_BUFFERING;
     }
 
+    private void adjustMusicVolume(int direction) {
+        if (audioManager == null) return;
+        audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0);
+        redraw();
+    }
+
+    private int musicVolumePercent() {
+        if (audioManager == null) return 0;
+        int maximum = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        return maximum == 0 ? 0 : Math.round(100f * audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / maximum);
+    }
+
     @Override public void onLocationChanged(Location location) {
-        if (location.hasAccuracy() && location.getAccuracy() <= 40f) {
-            float raw = location.hasSpeed() ? Math.max(0, location.getSpeed()) : 0;
-            if (raw < .45f) raw = 0;
-            smoothedMps = smoothedMps == 0 ? raw : smoothedMps * .62f + raw * .38f;
-            if (smoothedMps < .35f) smoothedMps = 0;
-            if (android.os.SystemClock.elapsedRealtime() - lastWeatherRequest > 60000L) {
-                lastWeatherRequest = android.os.SystemClock.elapsedRealtime();
-                weatherRepository.update(location.getLatitude(), location.getLongitude(), data -> {
-                    weatherData = data;
-                    redraw();
-                });
-                weatherRepository.updateAlerts(location.getLatitude(), location.getLongitude(), alert -> {
-                    weatherAlert = alert;
-                    redraw();
-                });
-            }
-            redraw();
+        float filtered = speedFilter.update(location);
+        if (Float.isNaN(filtered)) return;
+        smoothedMps = filtered;
+        if (android.os.SystemClock.elapsedRealtime() - lastWeatherRequest > 60000L) {
+            lastWeatherRequest = android.os.SystemClock.elapsedRealtime();
+            weatherRepository.update(location.getLatitude(), location.getLongitude(), data -> {
+                weatherData = data;
+                redraw();
+            });
+            weatherRepository.updateAlerts(location.getLatitude(), location.getLongitude(), alert -> {
+                weatherAlert = alert;
+                redraw();
+            });
         }
+        redraw();
     }
     @Override public void onProviderEnabled(String provider) { }
     @Override public void onProviderDisabled(String provider) { }
@@ -292,9 +305,12 @@ public class NavigationOverlayService extends Service implements LocationListene
             String artist = mediaMetadata == null ? "Tap your music app to start" : mediaMetadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
             text(c, shortText(title, 27), w * .34f, h * .39f, dp(17), Color.WHITE, Paint.Align.LEFT, true);
             text(c, shortText(artist, 30), w * .34f, h * .59f, dp(12), Color.rgb(205,218,224), Paint.Align.LEFT, false);
-            text(c, "|◀", w * .63f, h * .83f, dp(22), Color.WHITE, Paint.Align.CENTER, true);
-            text(c, isPlaying() ? "Ⅱ" : "▶", w * .76f, h * .83f, dp(27), Color.rgb(0,229,255), Paint.Align.CENTER, true);
-            text(c, "▶|", w * .88f, h * .83f, dp(22), Color.WHITE, Paint.Align.CENTER, true);
+            text(c, "|◀", w * .50f, h * .83f, dp(20), Color.WHITE, Paint.Align.CENTER, true);
+            text(c, isPlaying() ? "Ⅱ" : "▶", w * .61f, h * .83f, dp(25), Color.rgb(0,229,255), Paint.Align.CENTER, true);
+            text(c, "▶|", w * .72f, h * .83f, dp(20), Color.WHITE, Paint.Align.CENTER, true);
+            text(c, "−", w * .82f, h * .83f, dp(27), Color.WHITE, Paint.Align.CENTER, true);
+            text(c, "+", w * .90f, h * .83f, dp(25), Color.WHITE, Paint.Align.CENTER, true);
+            text(c, "VOL " + musicVolumePercent() + "%", w * .86f, h * .61f, dp(9), Color.rgb(180,210,220), Paint.Align.CENTER, true);
             text(c, "×", w * .965f, h * .31f, dp(25), Color.rgb(220,230,235), Paint.Align.CENTER, false);
         }
 
@@ -313,11 +329,13 @@ public class NavigationOverlayService extends Service implements LocationListene
                     if (x < w * .29f) {
                         boolean metric = prefs.getBoolean("metric", false);
                         prefs.edit().putBoolean("metric", !metric).apply(); invalidate();
-                    } else if (x > w * .93f) stopSelf();
-                    else if (x > w * .56f && x < w * .69f && mediaController != null) mediaController.getTransportControls().skipToPrevious();
-                    else if (x < w * .82f && x > w * .69f && mediaController != null) {
+                    } else if (x > w * .945f) stopSelf();
+                    else if (x > w * .445f && x < w * .555f && mediaController != null) mediaController.getTransportControls().skipToPrevious();
+                    else if (x < w * .665f && x > w * .555f && mediaController != null) {
                         if (isPlaying()) mediaController.getTransportControls().pause(); else mediaController.getTransportControls().play();
-                    } else if (x > w * .82f && x < w * .93f && mediaController != null) mediaController.getTransportControls().skipToNext();
+                    } else if (x > w * .665f && x < w * .775f && mediaController != null) mediaController.getTransportControls().skipToNext();
+                    else if (x > w * .775f && x < w * .86f) adjustMusicVolume(AudioManager.ADJUST_LOWER);
+                    else if (x > w * .86f && x < w * .945f) adjustMusicVolume(AudioManager.ADJUST_RAISE);
                 }
                 dragging = false; performClick(); return true;
             }
