@@ -63,10 +63,15 @@ public class WeatherRepository {
         public final double windSpeed;
         public final int windDirection;
         public final int weatherCode;
+        public final int precipitationMinutes;
+        public final int precipitationChance;
+        public final int precipitationCode;
+        public final double upcomingWindGust;
         public final long updatedAt;
 
         WeatherData(double temperature, double feelsLike, int rainChance, double windSpeed,
-                    int windDirection, int weatherCode, long updatedAt) {
+                    int windDirection, int weatherCode, long updatedAt, int precipitationMinutes,
+                    int precipitationChance, int precipitationCode, double upcomingWindGust) {
             this.temperature = temperature;
             this.feelsLike = feelsLike;
             this.rainChance = rainChance;
@@ -74,6 +79,10 @@ public class WeatherRepository {
             this.windDirection = windDirection;
             this.weatherCode = weatherCode;
             this.updatedAt = updatedAt;
+            this.precipitationMinutes = precipitationMinutes;
+            this.precipitationChance = precipitationChance;
+            this.precipitationCode = precipitationCode;
+            this.upcomingWindGust = upcomingWindGust;
         }
 
         public String icon() {
@@ -127,7 +136,9 @@ public class WeatherRepository {
         if (!cache.contains("updated")) return null;
         return new WeatherData(cache.getFloat("temperature", 0), cache.getFloat("feels", 0),
                 cache.getInt("rain", 0), cache.getFloat("wind", 0), cache.getInt("direction", 0),
-                cache.getInt("code", 0), cache.getLong("updated", 0));
+                cache.getInt("code", 0), cache.getLong("updated", 0),
+                cache.getInt("precip_minutes", -1), cache.getInt("precip_chance", 0),
+                cache.getInt("precip_code", 0), cache.getFloat("upcoming_gust", 0));
     }
 
     public AlertData cachedAlert() {
@@ -153,6 +164,7 @@ public class WeatherRepository {
                         "https://api.open-meteo.com/v1/forecast?latitude=%.5f&longitude=%.5f" +
                                 "&current=temperature_2m,apparent_temperature,precipitation_probability," +
                                 "weather_code,wind_speed_10m,wind_direction_10m" +
+                                "&minutely_15=precipitation,precipitation_probability,weather_code,wind_gusts_10m" +
                                 "&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1",
                         latitude, longitude);
                 connection = (HttpURLConnection) new URL(endpoint).openConnection();
@@ -164,17 +176,42 @@ public class WeatherRepository {
                 String line;
                 while ((line = reader.readLine()) != null) json.append(line);
                 reader.close();
-                JSONObject current = new JSONObject(json.toString()).getJSONObject("current");
+                JSONObject root = new JSONObject(json.toString());
+                JSONObject current = root.getJSONObject("current");
+                int precipMinutes = -1, precipChance = 0, precipCode = 0;
+                double maxGust = 0;
+                JSONObject quarterHour = root.optJSONObject("minutely_15");
+                if (quarterHour != null) {
+                    JSONArray amount = quarterHour.optJSONArray("precipitation");
+                    JSONArray chance = quarterHour.optJSONArray("precipitation_probability");
+                    JSONArray codes = quarterHour.optJSONArray("weather_code");
+                    JSONArray gusts = quarterHour.optJSONArray("wind_gusts_10m");
+                    int count = amount == null ? 0 : Math.min(amount.length(), 9);
+                    for (int i = 1; i < count; i++) {
+                        int probability = chance == null ? 0 : chance.optInt(i, 0);
+                        double quantity = amount.optDouble(i, 0);
+                        if (gusts != null) maxGust = Math.max(maxGust, gusts.optDouble(i, 0));
+                        if (precipMinutes < 0 && probability >= 50 && quantity > 0.01) {
+                            precipMinutes = i * 15; precipChance = probability;
+                            precipCode = codes == null ? 61 : codes.optInt(i, 61);
+                        }
+                    }
+                }
                 result = new WeatherData(current.getDouble("temperature_2m"),
                         current.getDouble("apparent_temperature"),
                         current.optInt("precipitation_probability", 0),
                         current.getDouble("wind_speed_10m"),
                         current.optInt("wind_direction_10m", 0),
-                        current.getInt("weather_code"), System.currentTimeMillis());
+                        current.getInt("weather_code"), System.currentTimeMillis(), precipMinutes,
+                        precipChance, precipCode, maxGust);
                 cache.edit().putFloat("temperature", (float) result.temperature)
                         .putFloat("feels", (float) result.feelsLike).putInt("rain", result.rainChance)
                         .putFloat("wind", (float) result.windSpeed).putInt("direction", result.windDirection)
                         .putInt("code", result.weatherCode).putLong("updated", result.updatedAt).apply();
+                cache.edit().putInt("precip_minutes", result.precipitationMinutes)
+                        .putInt("precip_chance", result.precipitationChance)
+                        .putInt("precip_code", result.precipitationCode)
+                        .putFloat("upcoming_gust", (float) result.upcomingWindGust).apply();
             } catch (Exception ignored) { }
             finally {
                 if (connection != null) connection.disconnect();
