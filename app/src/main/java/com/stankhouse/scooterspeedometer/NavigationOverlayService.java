@@ -51,6 +51,9 @@ public class NavigationOverlayService extends Service implements LocationListene
     private PlaybackState playbackState;
     private float smoothedMps;
     private SharedPreferences prefs;
+    private WeatherRepository weatherRepository;
+    private WeatherRepository.WeatherData weatherData;
+    private long lastWeatherRequest;
 
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
         @Override public void onMetadataChanged(MediaMetadata metadata) { mediaMetadata = metadata; redraw(); }
@@ -65,6 +68,8 @@ public class NavigationOverlayService extends Service implements LocationListene
         prefs = getSharedPreferences("speedometer", MODE_PRIVATE);
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         mediaSessionManager = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
+        weatherRepository = new WeatherRepository(this);
+        weatherData = weatherRepository.cached();
         createNotificationChannel();
         startAsForeground();
         if (Settings.canDrawOverlays(this)) addOverlay();
@@ -182,6 +187,13 @@ public class NavigationOverlayService extends Service implements LocationListene
             if (raw < .45f) raw = 0;
             smoothedMps = smoothedMps == 0 ? raw : smoothedMps * .62f + raw * .38f;
             if (smoothedMps < .35f) smoothedMps = 0;
+            if (android.os.SystemClock.elapsedRealtime() - lastWeatherRequest > 60000L) {
+                lastWeatherRequest = android.os.SystemClock.elapsedRealtime();
+                weatherRepository.update(location.getLatitude(), location.getLongitude(), data -> {
+                    weatherData = data;
+                    redraw();
+                });
+            }
             redraw();
         }
     }
@@ -250,10 +262,18 @@ public class NavigationOverlayService extends Service implements LocationListene
             text(c, metric ? "KM/H" : "MPH", w * .14f, h * .82f, dp(14), Color.rgb(0,229,255), Paint.Align.CENTER, true);
             text(c, "⋮⋮", w * .275f, h * .58f, dp(24), Color.rgb(95,120,132), Paint.Align.CENTER, true);
 
+            if (weatherData != null) {
+                text(c, weatherData.icon() + " " + String.format(java.util.Locale.US, "%.0f°", weatherData.temperature),
+                        w * .34f, h * .18f, dp(13), Color.rgb(255, 220, 110), Paint.Align.LEFT, true);
+                text(c, "☂" + weatherData.rainChance + "%  " + weatherData.windCompass() + " " +
+                                String.format(java.util.Locale.US, "%.0f", weatherData.windSpeed) + "mph",
+                        w * .48f, h * .18f, dp(11), Color.rgb(205, 220, 228), Paint.Align.LEFT, false);
+            }
+
             String title = mediaMetadata == null ? "No music playing" : mediaMetadata.getString(MediaMetadata.METADATA_KEY_TITLE);
             String artist = mediaMetadata == null ? "Tap your music app to start" : mediaMetadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
-            text(c, shortText(title, 27), w * .34f, h * .34f, dp(17), Color.WHITE, Paint.Align.LEFT, true);
-            text(c, shortText(artist, 30), w * .34f, h * .55f, dp(12), Color.rgb(205,218,224), Paint.Align.LEFT, false);
+            text(c, shortText(title, 27), w * .34f, h * .39f, dp(17), Color.WHITE, Paint.Align.LEFT, true);
+            text(c, shortText(artist, 30), w * .34f, h * .59f, dp(12), Color.rgb(205,218,224), Paint.Align.LEFT, false);
             text(c, "|◀", w * .63f, h * .83f, dp(22), Color.WHITE, Paint.Align.CENTER, true);
             text(c, isPlaying() ? "Ⅱ" : "▶", w * .76f, h * .83f, dp(27), Color.rgb(0,229,255), Paint.Align.CENTER, true);
             text(c, "▶|", w * .88f, h * .83f, dp(22), Color.WHITE, Paint.Align.CENTER, true);
