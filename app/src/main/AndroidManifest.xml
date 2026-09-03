@@ -25,6 +25,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".BuiltInNavigationActivity"
+            android:screenOrientation="sensor"
+            android:exported="false" />
         <service
             android:name=".MediaAccessService"
             android:exported="true"
