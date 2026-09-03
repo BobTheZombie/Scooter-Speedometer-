@@ -16,6 +16,8 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Current song, artist, and album artwork from compatible music apps
 - Previous, play/pause, and next controls above the speedometer
 - Dimmed album artwork automatically becomes the dashboard background
+- Destination search with Google Maps, Waze, or another installed navigation app
+- Movable speed and music dashboard overlay that remains visible during navigation
 
 ## Install
 
@@ -26,3 +28,7 @@ GPS speed is most reliable outdoors after satellite lock. This app is a suppleme
 ## Music controls
 
 Tap **Enable Music Controls** in the app and allow **Scooter Speedometer** under Android's Notification Access settings. This lets the dash display and control Spotify, YouTube Music, Pandora, and most other Android media players. The app does not read, store, or transmit notification content.
+
+## Navigation overlay
+
+Tap **Navigate**, grant **Display over other apps** once, enter a destination, and choose Google Maps, Waze, or another navigation app. Navigation opens normally with a compact scooter dashboard floating above it. Drag the speed section vertically to reposition the dashboard, or tap **×** to close it.
