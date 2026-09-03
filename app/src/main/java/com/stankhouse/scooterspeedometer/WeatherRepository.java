@@ -1,10 +1,19 @@
 package com.stankhouse.scooterspeedometer;
 
+import android.Manifest;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -18,6 +27,34 @@ import java.util.concurrent.Executors;
 /** Lightweight, key-free current-weather client backed by Open-Meteo. */
 public class WeatherRepository {
     public interface Callback { void onWeather(WeatherData data); }
+    public interface AlertCallback { void onAlert(AlertData alert); }
+
+    public static class AlertData {
+        public final String id;
+        public final String event;
+        public final String headline;
+        public final String severity;
+        public final String instruction;
+        public final long updatedAt;
+
+        AlertData(String id, String event, String headline, String severity, String instruction, long updatedAt) {
+            this.id = id;
+            this.event = event;
+            this.headline = headline;
+            this.severity = severity;
+            this.instruction = instruction;
+            this.updatedAt = updatedAt;
+        }
+
+        public boolean active() { return id != null && !id.isEmpty(); }
+        public int severityRank() {
+            if ("Extreme".equalsIgnoreCase(severity)) return 4;
+            if ("Severe".equalsIgnoreCase(severity)) return 3;
+            if ("Moderate".equalsIgnoreCase(severity)) return 2;
+            if ("Minor".equalsIgnoreCase(severity)) return 1;
+            return 0;
+        }
+    }
 
     public static class WeatherData {
         public final double temperature;
@@ -73,13 +110,17 @@ public class WeatherRepository {
     }
 
     private static final long CACHE_MS = 10 * 60 * 1000L;
+    private static final long ALERT_CACHE_MS = 5 * 60 * 1000L;
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
     private static boolean fetching;
+    private static boolean fetchingAlerts;
+    private final Context context;
     private final SharedPreferences cache;
     private final Handler main = new Handler(Looper.getMainLooper());
 
     public WeatherRepository(Context context) {
-        cache = context.getApplicationContext().getSharedPreferences("weather_cache", Context.MODE_PRIVATE);
+        this.context = context.getApplicationContext();
+        cache = this.context.getSharedPreferences("weather_cache", Context.MODE_PRIVATE);
     }
 
     public WeatherData cached() {
@@ -87,6 +128,13 @@ public class WeatherRepository {
         return new WeatherData(cache.getFloat("temperature", 0), cache.getFloat("feels", 0),
                 cache.getInt("rain", 0), cache.getFloat("wind", 0), cache.getInt("direction", 0),
                 cache.getInt("code", 0), cache.getLong("updated", 0));
+    }
+
+    public AlertData cachedAlert() {
+        if (!cache.contains("alert_updated")) return null;
+        return new AlertData(cache.getString("alert_id", ""), cache.getString("alert_event", ""),
+                cache.getString("alert_headline", ""), cache.getString("alert_severity", "Unknown"),
+                cache.getString("alert_instruction", ""), cache.getLong("alert_updated", 0));
     }
 
     public void update(double latitude, double longitude, Callback callback) {
@@ -110,7 +158,7 @@ public class WeatherRepository {
                 connection = (HttpURLConnection) new URL(endpoint).openConnection();
                 connection.setConnectTimeout(8000);
                 connection.setReadTimeout(8000);
-                connection.setRequestProperty("User-Agent", "Scooter-Speedometer/1.3");
+                connection.setRequestProperty("User-Agent", "Scooter-Speedometer/1.4");
                 BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
                 StringBuilder json = new StringBuilder();
                 String line;
@@ -135,5 +183,87 @@ public class WeatherRepository {
             WeatherData delivered = result;
             if (delivered != null) main.post(() -> callback.onWeather(delivered));
         });
+    }
+
+    public void updateAlerts(double latitude, double longitude, AlertCallback callback) {
+        AlertData saved = cachedAlert();
+        if (saved != null) callback.onAlert(saved);
+        if (saved != null && System.currentTimeMillis() - saved.updatedAt < ALERT_CACHE_MS) return;
+        synchronized (WeatherRepository.class) {
+            if (fetchingAlerts) return;
+            fetchingAlerts = true;
+        }
+        EXECUTOR.execute(() -> {
+            AlertData result = null;
+            HttpURLConnection connection = null;
+            try {
+                String endpoint = String.format(Locale.US,
+                        "https://api.weather.gov/alerts/active?point=%.4f,%.4f", latitude, longitude);
+                connection = (HttpURLConnection) new URL(endpoint).openConnection();
+                connection.setConnectTimeout(9000);
+                connection.setReadTimeout(9000);
+                connection.setRequestProperty("User-Agent",
+                        "Scooter-Speedometer/1.4 (github.com/BobTheZombie/Scooter-Speedometer-)");
+                connection.setRequestProperty("Accept", "application/geo+json");
+                BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+                StringBuilder json = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) json.append(line);
+                reader.close();
+                JSONArray features = new JSONObject(json.toString()).getJSONArray("features");
+                AlertData strongest = null;
+                for (int i = 0; i < features.length(); i++) {
+                    JSONObject feature = features.getJSONObject(i);
+                    JSONObject properties = feature.getJSONObject("properties");
+                    AlertData candidate = new AlertData(feature.optString("id", "alert-" + i),
+                            properties.optString("event", "Weather alert"),
+                            properties.optString("headline", properties.optString("description", "")),
+                            properties.optString("severity", "Unknown"),
+                            properties.optString("instruction", ""), System.currentTimeMillis());
+                    if (strongest == null || candidate.severityRank() > strongest.severityRank()) strongest = candidate;
+                }
+                result = strongest == null ? new AlertData("", "", "", "Unknown", "", System.currentTimeMillis()) : strongest;
+                cache.edit().putString("alert_id", result.id).putString("alert_event", result.event)
+                        .putString("alert_headline", result.headline).putString("alert_severity", result.severity)
+                        .putString("alert_instruction", result.instruction).putLong("alert_updated", result.updatedAt).apply();
+            } catch (Exception ignored) { }
+            finally {
+                if (connection != null) connection.disconnect();
+                synchronized (WeatherRepository.class) { fetchingAlerts = false; }
+            }
+            AlertData delivered = result;
+            if (delivered != null) main.post(() -> {
+                callback.onAlert(delivered);
+                notifyIfNew(delivered);
+            });
+        });
+    }
+
+    private void notifyIfNew(AlertData alert) {
+        if (!alert.active() || alert.severityRank() < 2) return;
+        String lastId = cache.getString("last_notified_alert", "");
+        if (alert.id.equals(lastId)) return;
+        if (Build.VERSION.SDK_INT >= 33 &&
+                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return;
+        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        String channelId = "weather_alerts";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(channelId, "Live weather alerts",
+                    NotificationManager.IMPORTANCE_HIGH);
+            channel.setDescription("Official active National Weather Service alerts near the scooter");
+            manager.createNotificationChannel(channel);
+        }
+        PendingIntent open = PendingIntent.getActivity(context, 44, new Intent(context, MainActivity.class),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? new Notification.Builder(context, channelId) : new Notification.Builder(context);
+        Notification notification = builder.setSmallIcon(R.drawable.ic_launcher)
+                .setContentTitle(alert.event)
+                .setContentText(alert.headline)
+                .setStyle(new Notification.BigTextStyle().bigText(alert.headline))
+                .setContentIntent(open).setAutoCancel(true).setCategory(Notification.CATEGORY_ALARM)
+                .setPriority(Notification.PRIORITY_HIGH).build();
+        manager.notify(4401, notification);
+        cache.edit().putString("last_notified_alert", alert.id).apply();
     }
 }
