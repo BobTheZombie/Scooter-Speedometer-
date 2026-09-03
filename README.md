@@ -24,6 +24,8 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Official live National Weather Service alert banners and Android notifications
 - Built-in media volume down/up controls with live volume percentage
 - Accuracy-aware adaptive GPS filtering with spike rejection and stationary-drift suppression
+- Custom dashboard editor with draggable/resizable media, speedometer, and navigation sections
+- Full and compact portrait/landscape presets, five gauge colors, three gauge styles, album-art opacity, and three saved layout slots
 
 ## Install
 
@@ -46,3 +48,7 @@ Current weather is loaded automatically from the scooter's GPS position and refr
 Drag the cyan grip in the weather widget's lower-right corner to resize it. The chosen width and height are restored the next time the app opens.
 
 The full dashboard background reacts to current conditions with animated sunlight, drifting clouds, rain, snow, fog, or lightning. In the United States, active National Weather Service alerts are checked approximately every five minutes. Moderate, severe, and extreme alerts produce an Android notification; tapping the alert banner opens its full instructions.
+
+## Dashboard customization
+
+Tap **Customize** at the bottom of the dashboard. Choose **Drag & resize sections**, then drag the media, speedometer, or navigation outline to reposition it; drag its lower-right dot to resize it. Tap **Done** to keep the layout. The customization menu also includes compact and full portrait/landscape presets, album-art transparency, gauge color and style choices, and three reusable saved-layout slots.
