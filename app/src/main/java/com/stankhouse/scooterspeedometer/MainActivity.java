@@ -2,6 +2,8 @@ package com.stankhouse.scooterspeedometer;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -21,6 +23,8 @@ import android.media.MediaMetadata;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.provider.Settings;
@@ -28,6 +32,7 @@ import android.text.TextUtils;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.EditText;
 
 import java.util.List;
 import java.util.Locale;
@@ -47,6 +52,7 @@ public class MainActivity extends Activity implements LocationListener {
     private MediaController mediaController;
     private MediaMetadata mediaMetadata;
     private PlaybackState playbackState;
+    private boolean navigationPermissionPending;
 
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
         @Override public void onMetadataChanged(MediaMetadata metadata) { mediaMetadata = metadata; speedView.invalidate(); }
@@ -86,6 +92,10 @@ public class MainActivity extends Activity implements LocationListener {
         enterImmersive();
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) startGps();
         refreshMedia();
+        if (navigationPermissionPending && Settings.canDrawOverlays(this)) {
+            navigationPermissionPending = false;
+            speedView.post(this::showDestinationDialog);
+        }
     }
     @Override protected void onPause() { super.onPause(); stopGps(); stopMediaListener(); saveStats(); }
 
@@ -153,6 +163,67 @@ public class MainActivity extends Activity implements LocationListener {
         if (isPlaying()) mediaController.getTransportControls().pause(); else mediaController.getTransportControls().play();
     }
     private void mediaNext() { if (mediaController != null) mediaController.getTransportControls().skipToNext(); }
+
+    private void beginNavigation() {
+        if (!Settings.canDrawOverlays(this)) {
+            navigationPermissionPending = true;
+            new AlertDialog.Builder(this)
+                    .setTitle("Keep the dash over navigation")
+                    .setMessage("Allow Scooter Speedometer to display over other apps. This keeps speed and music controls visible over Google Maps, Waze, and other navigation apps.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Allow", (dialog, which) -> startActivity(new Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))))
+                    .show();
+            return;
+        }
+        showDestinationDialog();
+    }
+
+    private void showDestinationDialog() {
+        final EditText destination = new EditText(this);
+        destination.setHint("Address, business, or destination");
+        destination.setSingleLine(true);
+        destination.setPadding(48, 12, 48, 12);
+        new AlertDialog.Builder(this)
+                .setTitle("Where are we going?")
+                .setView(destination)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Choose navigation app", (dialog, which) -> {
+                    String query = destination.getText().toString().trim();
+                    if (!query.isEmpty()) chooseNavigationApp(query);
+                }).show();
+    }
+
+    private void chooseNavigationApp(String destination) {
+        String[] apps = {"Google Maps", "Waze", "Another navigation app"};
+        new AlertDialog.Builder(this)
+                .setTitle("Navigate with")
+                .setItems(apps, (dialog, which) -> launchNavigation(destination, which))
+                .show();
+    }
+
+    private void launchNavigation(String destination, int choice) {
+        Intent overlay = new Intent(this, NavigationOverlayService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(overlay); else startService(overlay);
+
+        Intent navigation;
+        if (choice == 0) {
+            navigation = new Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=" + Uri.encode(destination)));
+            navigation.setPackage("com.google.android.apps.maps");
+        } else if (choice == 1) {
+            navigation = new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://waze.com/ul?q=" + Uri.encode(destination) + "&navigate=yes"));
+            navigation.setPackage("com.waze");
+        } else {
+            navigation = Intent.createChooser(new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("geo:0,0?q=" + Uri.encode(destination))), "Navigate with");
+        }
+        try { startActivity(navigation); }
+        catch (ActivityNotFoundException missing) {
+            startActivity(Intent.createChooser(new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("geo:0,0?q=" + Uri.encode(destination))), "Navigate with"));
+        }
+    }
 
     @Override public void onLocationChanged(Location location) {
         lastFixElapsed = SystemClock.elapsedRealtime();
@@ -305,8 +376,13 @@ public class MainActivity extends Activity implements LocationListener {
             else if (!fresh) { status = "SEARCHING FOR GPS  •  " + satellites + " SAT"; statusColor = Color.rgb(255,179,0); }
             else { status = "GPS LOCK  •  " + satellites + " SAT  •  ±" + Math.round(accuracy) + "m"; statusColor = Color.rgb(74,222,128); }
             text(c, status, cx, h * .71f, 17f * scale, statusColor, Paint.Align.CENTER, true);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.argb(220, 0, 126, 150));
+            RectF navButton = new RectF(w * .36f, h * .725f, w * .64f, h * .77f);
+            c.drawRoundRect(navButton, 18f * scale, 18f * scale, paint);
+            text(c, "➤  NAVIGATE", cx, h * .756f, 15f * scale, Color.WHITE, Paint.Align.CENTER, true);
             paint.setColor(Color.rgb(52, 69, 78)); paint.setStrokeWidth(2f * scale);
-            c.drawLine(w * .10f, h * .77f, w * .90f, h * .77f, paint);
+            c.drawLine(w * .10f, h * .785f, w * .90f, h * .785f, paint);
             text(c, "MAX", w * .27f, h * .825f, 16f * scale, Color.rgb(160,180,190), Paint.Align.CENTER, true);
             text(c, String.format(Locale.US, "%.0f %s", maxShown, metric ? "km/h" : "mph"),
                     w * .27f, h * .885f, 26f * scale, Color.WHITE, Paint.Align.CENTER, true);
@@ -330,6 +406,9 @@ public class MainActivity extends Activity implements LocationListener {
                         else if (e.getX() < w * .84f) mediaPlayPause();
                         else mediaNext();
                     }
+                } else if (e.getY() >= h * .71f && e.getY() <= h * .79f &&
+                        e.getX() >= w * .32f && e.getX() <= w * .68f) {
+                    beginNavigation();
                 } else {
                     long held = SystemClock.elapsedRealtime() - downAt;
                     if (held >= 1100 && Math.hypot(e.getX() - downX, e.getY() - downY) < 80) resetStats();
