@@ -53,6 +53,7 @@ public class NavigationOverlayService extends Service implements LocationListene
     private SharedPreferences prefs;
     private WeatherRepository weatherRepository;
     private WeatherRepository.WeatherData weatherData;
+    private WeatherRepository.AlertData weatherAlert;
     private long lastWeatherRequest;
 
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
@@ -70,6 +71,7 @@ public class NavigationOverlayService extends Service implements LocationListene
         mediaSessionManager = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
         weatherRepository = new WeatherRepository(this);
         weatherData = weatherRepository.cached();
+        weatherAlert = weatherRepository.cachedAlert();
         createNotificationChannel();
         startAsForeground();
         if (Settings.canDrawOverlays(this)) addOverlay();
@@ -193,6 +195,10 @@ public class NavigationOverlayService extends Service implements LocationListene
                     weatherData = data;
                     redraw();
                 });
+                weatherRepository.updateAlerts(location.getLatitude(), location.getLongitude(), alert -> {
+                    weatherAlert = alert;
+                    redraw();
+                });
             }
             redraw();
         }
@@ -246,7 +252,16 @@ public class NavigationOverlayService extends Service implements LocationListene
             float w = getWidth(), h = getHeight(), scale = getResources().getDisplayMetrics().density;
             RectF card = new RectF(dp(6), dp(4), w - dp(6), h - dp(4));
             paint.setShadowLayer(dp(8), 0, dp(2), Color.argb(150, 0, 0, 0));
-            paint.setColor(Color.argb(236, 3, 10, 14)); c.drawRoundRect(card, dp(22), dp(22), paint);
+            int weatherTint = Color.rgb(3, 10, 14);
+            if (weatherData != null) {
+                int code = weatherData.weatherCode;
+                if (code == 0) weatherTint = Color.rgb(4, 48, 82);
+                else if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) weatherTint = Color.rgb(20, 42, 56);
+                else if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) weatherTint = Color.rgb(48, 68, 82);
+                else if (code >= 95) weatherTint = Color.rgb(30, 18, 47);
+            }
+            paint.setColor(Color.argb(236, Color.red(weatherTint), Color.green(weatherTint), Color.blue(weatherTint)));
+            c.drawRoundRect(card, dp(22), dp(22), paint);
             paint.clearShadowLayer();
 
             Bitmap album = art();
@@ -262,7 +277,10 @@ public class NavigationOverlayService extends Service implements LocationListene
             text(c, metric ? "KM/H" : "MPH", w * .14f, h * .82f, dp(14), Color.rgb(0,229,255), Paint.Align.CENTER, true);
             text(c, "⋮⋮", w * .275f, h * .58f, dp(24), Color.rgb(95,120,132), Paint.Align.CENTER, true);
 
-            if (weatherData != null) {
+            if (weatherAlert != null && weatherAlert.active()) {
+                text(c, "⚠ " + shortText(weatherAlert.event.toUpperCase(java.util.Locale.US), 31),
+                        w * .34f, h * .18f, dp(12), Color.rgb(255, 150, 90), Paint.Align.LEFT, true);
+            } else if (weatherData != null) {
                 text(c, weatherData.icon() + " " + String.format(java.util.Locale.US, "%.0f°", weatherData.temperature),
                         w * .34f, h * .18f, dp(13), Color.rgb(255, 220, 110), Paint.Align.LEFT, true);
                 text(c, "☂" + weatherData.rainChance + "%  " + weatherData.windCompass() + " " +
