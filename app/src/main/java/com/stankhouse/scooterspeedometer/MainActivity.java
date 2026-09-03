@@ -23,6 +23,7 @@ import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.MediaMetadata;
+import android.media.AudioManager;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
@@ -44,6 +45,7 @@ public class MainActivity extends Activity implements LocationListener {
     private static final int LOCATION_REQUEST = 42;
     private LocationManager locationManager;
     private MediaSessionManager mediaSessionManager;
+    private AudioManager audioManager;
     private SpeedView speedView;
     private SharedPreferences prefs;
     private Location lastGoodLocation;
@@ -52,6 +54,8 @@ public class MainActivity extends Activity implements LocationListener {
     private float maxMps;
     private float smoothedMps;
     private int satellites;
+    private final SpeedFilter speedFilter = new SpeedFilter();
+    private GnssStatus.Callback gnssCallback;
     private MediaController mediaController;
     private MediaMetadata mediaMetadata;
     private PlaybackState playbackState;
@@ -78,6 +82,7 @@ public class MainActivity extends Activity implements LocationListener {
         maxMps = prefs.getFloat("max", 0f);
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         mediaSessionManager = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
+        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         weatherRepository = new WeatherRepository(this);
         weatherData = weatherRepository.cached();
         weatherAlert = weatherRepository.cachedAlert();
@@ -118,16 +123,24 @@ public class MainActivity extends Activity implements LocationListener {
     private void startGps() {
         try {
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 250L, 0f, this);
-            locationManager.registerGnssStatusCallback(new GnssStatus.Callback() {
+            if (gnssCallback != null) return;
+            gnssCallback = new GnssStatus.Callback() {
                 @Override public void onSatelliteStatusChanged(GnssStatus status) {
                     int used = 0;
                     for (int i = 0; i < status.getSatelliteCount(); i++) if (status.usedInFix(i)) used++;
                     satellites = used; speedView.invalidate();
                 }
-            });
+            };
+            locationManager.registerGnssStatusCallback(gnssCallback);
         } catch (SecurityException ignored) { }
     }
-    private void stopGps() { try { locationManager.removeUpdates(this); } catch (SecurityException ignored) { } }
+    private void stopGps() {
+        try {
+            locationManager.removeUpdates(this);
+            if (gnssCallback != null) locationManager.unregisterGnssStatusCallback(gnssCallback);
+        } catch (SecurityException ignored) { }
+        gnssCallback = null;
+    }
 
     private boolean hasMediaAccess() {
         String enabled = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
@@ -179,6 +192,14 @@ public class MainActivity extends Activity implements LocationListener {
         if (isPlaying()) mediaController.getTransportControls().pause(); else mediaController.getTransportControls().play();
     }
     private void mediaNext() { if (mediaController != null) mediaController.getTransportControls().skipToNext(); }
+    private void adjustMusicVolume(int direction) {
+        audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0);
+        speedView.invalidate();
+    }
+    private int musicVolumePercent() {
+        int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        return max <= 0 ? 0 : Math.round(100f * audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / max);
+    }
 
     private void showWeatherAlert() {
         if (weatherAlert == null || !weatherAlert.active()) return;
@@ -250,12 +271,11 @@ public class MainActivity extends Activity implements LocationListener {
     }
 
     @Override public void onLocationChanged(Location location) {
+        float filtered = speedFilter.update(location);
+        if (Float.isNaN(filtered)) { speedView.invalidate(); return; }
         lastFixElapsed = SystemClock.elapsedRealtime();
-        if (!location.hasAccuracy() || location.getAccuracy() > 35f) { speedView.invalidate(); return; }
-        float raw = location.hasSpeed() ? Math.max(0f, location.getSpeed()) : 0f;
-        if (raw < 0.45f) raw = 0f;
-        smoothedMps = smoothedMps == 0f ? raw : (smoothedMps * 0.64f + raw * 0.36f);
-        if (smoothedMps < 0.35f) smoothedMps = 0f;
+        float raw = Math.max(0f, location.getSpeed());
+        smoothedMps = filtered;
         maxMps = Math.max(maxMps, smoothedMps);
         if (lastGoodLocation != null && location.getTime() > lastGoodLocation.getTime()) {
             float distance = lastGoodLocation.distanceTo(location);
@@ -366,14 +386,18 @@ public class MainActivity extends Activity implements LocationListener {
             String title = metadataText(MediaMetadata.METADATA_KEY_TITLE, MediaMetadata.METADATA_KEY_DISPLAY_TITLE);
             String artist = metadataText(MediaMetadata.METADATA_KEY_ARTIST, MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE);
             float infoX = artRect.right + 14f * scale;
-            text(c, ellipsize(title, 30), infoX, top + 39f * scale, 20f * scale, Color.WHITE, Paint.Align.LEFT, true);
-            text(c, ellipsize(artist, 34), infoX, top + 65f * scale, 14f * scale,
+            text(c, ellipsize(title, 25), infoX, top + 39f * scale, 20f * scale, Color.WHITE, Paint.Align.LEFT, true);
+            text(c, ellipsize(artist, 28), infoX, top + 65f * scale, 14f * scale,
                     Color.rgb(186, 204, 213), Paint.Align.LEFT, false);
             float buttonY = bottom - 34f * scale;
-            text(c, "|◀", w * .62f, buttonY, 25f * scale, Color.WHITE, Paint.Align.CENTER, true);
-            text(c, isPlaying() ? "Ⅱ" : "▶", w * .76f, buttonY, 31f * scale,
+            text(c, "|◀", w * .53f, buttonY, 23f * scale, Color.WHITE, Paint.Align.CENTER, true);
+            text(c, isPlaying() ? "Ⅱ" : "▶", w * .64f, buttonY, 29f * scale,
                     Color.rgb(0, 229, 255), Paint.Align.CENTER, true);
-            text(c, "▶|", w * .90f, buttonY, 25f * scale, Color.WHITE, Paint.Align.CENTER, true);
+            text(c, "▶|", w * .75f, buttonY, 23f * scale, Color.WHITE, Paint.Align.CENTER, true);
+            text(c, "−", w * .86f, buttonY, 28f * scale, Color.WHITE, Paint.Align.CENTER, true);
+            text(c, "+", w * .95f, buttonY, 27f * scale, Color.WHITE, Paint.Align.CENTER, true);
+            text(c, "VOL " + musicVolumePercent() + "%", w * .905f, top + 67f * scale,
+                    10f * scale, Color.rgb(130, 220, 235), Paint.Align.CENTER, true);
         }
 
         private void drawWeatherPanel(Canvas c, float w, float h, float scale) {
@@ -549,10 +573,12 @@ public class MainActivity extends Activity implements LocationListener {
                 float w = getWidth(), h = getHeight();
                 if (e.getY() <= h * .27f) {
                     if (!hasMediaAccess()) openMediaAccessSettings();
-                    else if (e.getX() >= w * .53f && e.getY() >= h * .12f) {
-                        if (e.getX() < w * .69f) mediaPrevious();
-                        else if (e.getX() < w * .84f) mediaPlayPause();
-                        else mediaNext();
+                    else if (e.getX() >= w * .46f && e.getY() >= h * .12f) {
+                        if (e.getX() < w * .585f) mediaPrevious();
+                        else if (e.getX() < w * .695f) mediaPlayPause();
+                        else if (e.getX() < w * .805f) mediaNext();
+                        else if (e.getX() < w * .91f) adjustMusicVolume(AudioManager.ADJUST_LOWER);
+                        else adjustMusicVolume(AudioManager.ADJUST_RAISE);
                     }
                 } else if (e.getY() >= h * .71f && e.getY() <= h * .79f &&
                         e.getX() >= w * .32f && e.getX() <= w * .68f) {
