@@ -53,6 +53,9 @@ public class MainActivity extends Activity implements LocationListener {
     private MediaMetadata mediaMetadata;
     private PlaybackState playbackState;
     private boolean navigationPermissionPending;
+    private WeatherRepository weatherRepository;
+    private WeatherRepository.WeatherData weatherData;
+    private long lastWeatherRequest;
 
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
         @Override public void onMetadataChanged(MediaMetadata metadata) { mediaMetadata = metadata; speedView.invalidate(); }
@@ -71,6 +74,8 @@ public class MainActivity extends Activity implements LocationListener {
         maxMps = prefs.getFloat("max", 0f);
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         mediaSessionManager = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
+        weatherRepository = new WeatherRepository(this);
+        weatherData = weatherRepository.cached();
         speedView = new SpeedView(this);
         setContentView(speedView);
         enterImmersive();
@@ -239,6 +244,13 @@ public class MainActivity extends Activity implements LocationListener {
             if (distance < 120f && dt < 15000L && (raw > 0.7f || distance > 4f)) tripMeters += distance;
         }
         lastGoodLocation = location;
+        if (SystemClock.elapsedRealtime() - lastWeatherRequest > 60000L) {
+            lastWeatherRequest = SystemClock.elapsedRealtime();
+            weatherRepository.update(location.getLatitude(), location.getLongitude(), data -> {
+                weatherData = data;
+                speedView.invalidate();
+            });
+        }
         speedView.accuracy = location.getAccuracy();
         speedView.invalidate();
     }
@@ -341,6 +353,30 @@ public class MainActivity extends Activity implements LocationListener {
             text(c, "▶|", w * .90f, buttonY, 25f * scale, Color.WHITE, Paint.Align.CENTER, true);
         }
 
+        private void drawWeatherPanel(Canvas c, float w, float h, float scale) {
+            RectF panel = new RectF(w * .045f, h * .265f, w * .40f, h * .35f);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(Color.argb(215, 4, 14, 20));
+            c.drawRoundRect(panel, 18f * scale, 18f * scale, paint);
+            if (weatherData == null) {
+                text(c, "◌  WEATHER", w * .075f, h * .302f, 15f * scale,
+                        Color.rgb(0, 229, 255), Paint.Align.LEFT, true);
+                text(c, "Loading…", w * .075f, h * .33f, 12f * scale,
+                        Color.rgb(170, 191, 201), Paint.Align.LEFT, false);
+                return;
+            }
+            text(c, weatherData.icon(), w * .078f, h * .322f, 34f * scale,
+                    Color.rgb(255, 193, 7), Paint.Align.LEFT, true);
+            text(c, String.format(Locale.US, "%.0f°", weatherData.temperature), w * .15f,
+                    h * .312f, 27f * scale, Color.WHITE, Paint.Align.LEFT, true);
+            text(c, weatherData.condition(), w * .15f, h * .337f, 11f * scale,
+                    Color.rgb(184, 204, 214), Paint.Align.LEFT, false);
+            text(c, "☂ " + weatherData.rainChance + "%", w * .285f, h * .302f,
+                    12f * scale, Color.rgb(110, 210, 255), Paint.Align.LEFT, true);
+            text(c, String.format(Locale.US, "%s %.0f mph", weatherData.windCompass(), weatherData.windSpeed),
+                    w * .285f, h * .333f, 11f * scale, Color.rgb(205, 216, 222), Paint.Align.LEFT, false);
+        }
+
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
             float w = getWidth(), h = getHeight(), cx = w / 2f;
@@ -351,6 +387,7 @@ public class MainActivity extends Activity implements LocationListener {
                 paint.setColor(Color.argb(150, 0, 5, 8)); c.drawRect(0, 0, w, h, paint);
             }
             drawMediaPanel(c, w, h, scale);
+            drawWeatherPanel(c, w, h, scale);
             boolean fresh = lastFixElapsed > 0 && SystemClock.elapsedRealtime() - lastFixElapsed < 3500;
             boolean permission = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
             boolean gpsOn = false;
