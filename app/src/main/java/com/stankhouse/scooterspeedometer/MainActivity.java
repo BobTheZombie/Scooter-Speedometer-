@@ -314,6 +314,10 @@ public class MainActivity extends Activity implements LocationListener {
         private float accuracy = 999f;
         private long downAt;
         private float downX, downY;
+        private final RectF weatherPanelRect = new RectF();
+        private boolean resizingWeather;
+        private float weatherWidthFraction = prefs.getFloat("weather_width", .355f);
+        private float weatherHeightFraction = prefs.getFloat("weather_height", .085f);
         SpeedView(Context context) { super(context); setBackgroundColor(Color.rgb(4, 8, 12)); }
 
         private void text(Canvas c, String value, float x, float y, float size, int color, Paint.Align align, boolean bold) {
@@ -401,27 +405,44 @@ public class MainActivity extends Activity implements LocationListener {
         }
 
         private void drawWeatherPanel(Canvas c, float w, float h, float scale) {
-            RectF panel = new RectF(w * .045f, h * .265f, w * .40f, h * .35f);
+            weatherWidthFraction = Math.max(.27f, Math.min(.535f, weatherWidthFraction));
+            weatherHeightFraction = Math.max(.07f, Math.min(.17f, weatherHeightFraction));
+            weatherPanelRect.set(w * .045f, h * .265f,
+                    w * (.045f + weatherWidthFraction), h * (.265f + weatherHeightFraction));
+            RectF panel = weatherPanelRect;
+            float panelScale = Math.max(.82f, Math.min(1.55f, panel.height() / (h * .085f)));
+            float left = panel.left, top = panel.top, pw = panel.width(), ph = panel.height();
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.argb(215, 4, 14, 20));
             c.drawRoundRect(panel, 18f * scale, 18f * scale, paint);
             if (weatherData == null) {
-                text(c, "◌  WEATHER", w * .075f, h * .302f, 15f * scale,
+                text(c, "◌  WEATHER", left + pw * .085f, top + ph * .44f, 15f * scale * panelScale,
                         Color.rgb(0, 229, 255), Paint.Align.LEFT, true);
-                text(c, "Loading…", w * .075f, h * .33f, 12f * scale,
+                text(c, "Loading…", left + pw * .085f, top + ph * .76f, 12f * scale * panelScale,
                         Color.rgb(170, 191, 201), Paint.Align.LEFT, false);
-                return;
+            } else {
+                text(c, weatherData.icon(), left + pw * .09f, top + ph * .67f, 34f * scale * panelScale,
+                        Color.rgb(255, 193, 7), Paint.Align.LEFT, true);
+                text(c, String.format(Locale.US, "%.0f°", weatherData.temperature), left + pw * .30f,
+                        top + ph * .55f, 27f * scale * panelScale, Color.WHITE, Paint.Align.LEFT, true);
+                text(c, ellipsize(weatherData.condition(), Math.max(9, Math.round(17 * weatherWidthFraction / .355f))),
+                        left + pw * .30f, top + ph * .84f, 11f * scale * panelScale,
+                        Color.rgb(184, 204, 214), Paint.Align.LEFT, false);
+                text(c, "☂ " + weatherData.rainChance + "%", left + pw * .68f, top + ph * .43f,
+                        12f * scale * panelScale, Color.rgb(110, 210, 255), Paint.Align.LEFT, true);
+                text(c, String.format(Locale.US, "%s %.0f mph", weatherData.windCompass(), weatherData.windSpeed),
+                        left + pw * .68f, top + ph * .78f, 11f * scale * panelScale,
+                        Color.rgb(205, 216, 222), Paint.Align.LEFT, false);
             }
-            text(c, weatherData.icon(), w * .078f, h * .322f, 34f * scale,
-                    Color.rgb(255, 193, 7), Paint.Align.LEFT, true);
-            text(c, String.format(Locale.US, "%.0f°", weatherData.temperature), w * .15f,
-                    h * .312f, 27f * scale, Color.WHITE, Paint.Align.LEFT, true);
-            text(c, weatherData.condition(), w * .15f, h * .337f, 11f * scale,
-                    Color.rgb(184, 204, 214), Paint.Align.LEFT, false);
-            text(c, "☂ " + weatherData.rainChance + "%", w * .285f, h * .302f,
-                    12f * scale, Color.rgb(110, 210, 255), Paint.Align.LEFT, true);
-            text(c, String.format(Locale.US, "%s %.0f mph", weatherData.windCompass(), weatherData.windSpeed),
-                    w * .285f, h * .333f, 11f * scale, Color.rgb(205, 216, 222), Paint.Align.LEFT, false);
+            paint.setColor(Color.rgb(0, 229, 255));
+            paint.setStrokeWidth(Math.max(2f, 2f * scale));
+            paint.setStyle(Paint.Style.STROKE);
+            float grip = Math.max(12f * scale, Math.min(panel.width(), panel.height()) * .18f);
+            c.drawLine(panel.right - grip, panel.bottom - 3f * scale, panel.right - 3f * scale,
+                    panel.bottom - grip, paint);
+            c.drawLine(panel.right - grip * .55f, panel.bottom - 3f * scale, panel.right - 3f * scale,
+                    panel.bottom - grip * .55f, paint);
+            paint.setStyle(Paint.Style.FILL);
         }
 
         private void drawWeatherAtmosphere(Canvas c, float w, float h) {
@@ -501,12 +522,13 @@ public class MainActivity extends Activity implements LocationListener {
         private void drawAlertBanner(Canvas c, float w, float h, float scale) {
             if (weatherAlert == null || !weatherAlert.active()) return;
             int color = weatherAlert.severityRank() >= 3 ? Color.rgb(190, 32, 38) : Color.rgb(213, 109, 20);
-            RectF banner = new RectF(w * .42f, h * .265f, w * .955f, h * .35f);
+            float bannerLeft = Math.max(w * .42f, weatherPanelRect.right + w * .02f);
+            RectF banner = new RectF(bannerLeft, h * .265f, w * .955f, h * .35f);
             paint.setColor(Color.argb(235, Color.red(color), Color.green(color), Color.blue(color)));
             paint.setStyle(Paint.Style.FILL); c.drawRoundRect(banner, 18f * scale, 18f * scale, paint);
-            text(c, "⚠  " + ellipsize(weatherAlert.event.toUpperCase(Locale.US), 28), w * .445f,
+            text(c, "⚠  " + ellipsize(weatherAlert.event.toUpperCase(Locale.US), 28), banner.left + w * .025f,
                     h * .302f, 15f * scale, Color.WHITE, Paint.Align.LEFT, true);
-            text(c, ellipsize(weatherAlert.headline, 62), w * .445f, h * .332f,
+            text(c, ellipsize(weatherAlert.headline, 62), banner.left + w * .025f, h * .332f,
                     10f * scale, Color.rgb(255, 232, 225), Paint.Align.LEFT, false);
         }
 
@@ -567,11 +589,29 @@ public class MainActivity extends Activity implements LocationListener {
 
         @Override public boolean onTouchEvent(MotionEvent e) {
             if (e.getAction() == MotionEvent.ACTION_DOWN) {
-                downAt = SystemClock.elapsedRealtime(); downX = e.getX(); downY = e.getY(); return true;
+                downAt = SystemClock.elapsedRealtime(); downX = e.getX(); downY = e.getY();
+                float grip = Math.max(32f * getResources().getDisplayMetrics().density,
+                        Math.min(weatherPanelRect.width(), weatherPanelRect.height()) * .32f);
+                resizingWeather = e.getX() >= weatherPanelRect.right - grip &&
+                        e.getX() <= weatherPanelRect.right + grip * .25f &&
+                        e.getY() >= weatherPanelRect.bottom - grip &&
+                        e.getY() <= weatherPanelRect.bottom + grip * .25f;
+                return true;
+            }
+            if (e.getAction() == MotionEvent.ACTION_MOVE && resizingWeather) {
+                float w = getWidth(), h = getHeight();
+                weatherWidthFraction = Math.max(.27f, Math.min(.535f, e.getX() / w - .045f));
+                weatherHeightFraction = Math.max(.07f, Math.min(.17f, e.getY() / h - .265f));
+                invalidate();
+                return true;
             }
             if (e.getAction() == MotionEvent.ACTION_UP) {
                 float w = getWidth(), h = getHeight();
-                if (e.getY() <= h * .27f) {
+                if (resizingWeather) {
+                    prefs.edit().putFloat("weather_width", weatherWidthFraction)
+                            .putFloat("weather_height", weatherHeightFraction).apply();
+                    resizingWeather = false;
+                } else if (e.getY() <= h * .27f) {
                     if (!hasMediaAccess()) openMediaAccessSettings();
                     else if (e.getX() >= w * .46f && e.getY() >= h * .12f) {
                         if (e.getX() < w * .585f) mediaPrevious();
@@ -595,6 +635,7 @@ public class MainActivity extends Activity implements LocationListener {
                 }
                 performClick(); return true;
             }
+            if (e.getAction() == MotionEvent.ACTION_CANCEL) resizingWeather = false;
             return true;
         }
         @Override public boolean performClick() { super.performClick(); return true; }
