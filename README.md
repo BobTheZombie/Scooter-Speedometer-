@@ -21,6 +21,8 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - GPS-based live weather widget with temperature, conditions, rain chance, and wind
 - Animated HTC Sense-style weather backgrounds for sun, clouds, rain, snow, fog, and storms
 - Official live National Weather Service alert banners and Android notifications
+- Built-in media volume down/up controls with live volume percentage
+- Accuracy-aware adaptive GPS filtering with spike rejection and stationary-drift suppression
 
 ## Install
 
