@@ -63,6 +63,7 @@ public class MainActivity extends Activity implements LocationListener {
     private WeatherRepository weatherRepository;
     private WeatherRepository.WeatherData weatherData;
     private WeatherRepository.AlertData weatherAlert;
+    private WeatherVoiceManager weatherVoice;
     private long lastWeatherRequest;
 
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
@@ -84,6 +85,7 @@ public class MainActivity extends Activity implements LocationListener {
         mediaSessionManager = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         weatherRepository = new WeatherRepository(this);
+        weatherVoice = new WeatherVoiceManager(this);
         weatherData = weatherRepository.cached();
         weatherAlert = weatherRepository.cachedAlert();
         speedView = new SpeedView(this);
@@ -240,7 +242,7 @@ public class MainActivity extends Activity implements LocationListener {
     }
 
     private void chooseNavigationApp(String destination) {
-        String[] apps = {"Google Maps", "Waze", "Another navigation app"};
+        String[] apps = {"Built-in free navigation", "Google Maps", "Waze", "Another navigation app"};
         new AlertDialog.Builder(this)
                 .setTitle("Navigate with")
                 .setItems(apps, (dialog, which) -> launchNavigation(destination, which))
@@ -251,11 +253,15 @@ public class MainActivity extends Activity implements LocationListener {
         Intent overlay = new Intent(this, NavigationOverlayService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(overlay); else startService(overlay);
 
-        Intent navigation;
         if (choice == 0) {
+            startActivity(new Intent(this, BuiltInNavigationActivity.class).putExtra("destination", destination));
+            return;
+        }
+        Intent navigation;
+        if (choice == 1) {
             navigation = new Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=" + Uri.encode(destination)));
             navigation.setPackage("com.google.android.apps.maps");
-        } else if (choice == 1) {
+        } else if (choice == 2) {
             navigation = new Intent(Intent.ACTION_VIEW,
                     Uri.parse("https://waze.com/ul?q=" + Uri.encode(destination) + "&navigate=yes"));
             navigation.setPackage("com.waze");
@@ -287,10 +293,12 @@ public class MainActivity extends Activity implements LocationListener {
             lastWeatherRequest = SystemClock.elapsedRealtime();
             weatherRepository.update(location.getLatitude(), location.getLongitude(), data -> {
                 weatherData = data;
+                weatherVoice.announceForecast(data);
                 speedView.invalidate();
             });
             weatherRepository.updateAlerts(location.getLatitude(), location.getLongitude(), alert -> {
                 weatherAlert = alert;
+                weatherVoice.announceAlert(alert);
                 speedView.invalidate();
             });
         }
@@ -306,6 +314,10 @@ public class MainActivity extends Activity implements LocationListener {
     }
     private void resetStats() { tripMeters = 0; maxMps = 0; saveStats(); speedView.invalidate(); }
     private void saveStats() { prefs.edit().putFloat("trip", (float) tripMeters).putFloat("max", maxMps).apply(); }
+    @Override protected void onDestroy() {
+        if (weatherVoice != null) weatherVoice.shutdown();
+        super.onDestroy();
+    }
 
     private class SpeedView extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -508,6 +520,8 @@ public class MainActivity extends Activity implements LocationListener {
             paint.setStyle(Paint.Style.FILL);
             paint.setColor(Color.argb(215, 4, 14, 20));
             c.drawRoundRect(panel, 18f * scale, 18f * scale, paint);
+            text(c, weatherVoice.enabled() ? "🔊" : "🔇", panel.right - pw * .055f,
+                    panel.top + ph * .24f, 10f * scale * panelScale, Color.WHITE, Paint.Align.RIGHT, true);
             if (weatherData == null) {
                 text(c, "◌  WEATHER", left + pw * .085f, top + ph * .44f, 15f * scale * panelScale,
                         Color.rgb(0, 229, 255), Paint.Align.LEFT, true);
@@ -794,6 +808,8 @@ public class MainActivity extends Activity implements LocationListener {
                     prefs.edit().putFloat("weather_width", weatherWidthFraction)
                             .putFloat("weather_height", weatherHeightFraction).apply();
                     resizingWeather = false;
+                } else if (weatherPanelRect.contains(e.getX(), e.getY())) {
+                    weatherVoice.setEnabled(!weatherVoice.enabled()); invalidate();
                 } else if (mediaSlot.contains(e.getX(), e.getY())) {
                     float sourceX = w * (.035f + (e.getX() - mediaSlot.left) / mediaSlot.width() * .93f);
                     float sourceY = h * (.025f + (e.getY() - mediaSlot.top) / mediaSlot.height() * .22f);
