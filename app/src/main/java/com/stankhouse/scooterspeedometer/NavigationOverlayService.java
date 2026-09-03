@@ -57,6 +57,7 @@ public class NavigationOverlayService extends Service implements LocationListene
     private WeatherRepository weatherRepository;
     private WeatherRepository.WeatherData weatherData;
     private WeatherRepository.AlertData weatherAlert;
+    private WeatherVoiceManager weatherVoice;
     private long lastWeatherRequest;
 
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
@@ -74,6 +75,7 @@ public class NavigationOverlayService extends Service implements LocationListene
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         mediaSessionManager = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
         weatherRepository = new WeatherRepository(this);
+        weatherVoice = new WeatherVoiceManager(this);
         weatherData = weatherRepository.cached();
         weatherAlert = weatherRepository.cachedAlert();
         createNotificationChannel();
@@ -207,10 +209,12 @@ public class NavigationOverlayService extends Service implements LocationListene
             lastWeatherRequest = android.os.SystemClock.elapsedRealtime();
             weatherRepository.update(location.getLatitude(), location.getLongitude(), data -> {
                 weatherData = data;
+                weatherVoice.announceForecast(data);
                 redraw();
             });
             weatherRepository.updateAlerts(location.getLatitude(), location.getLongitude(), alert -> {
                 weatherAlert = alert;
+                weatherVoice.announceAlert(alert);
                 redraw();
             });
         }
@@ -223,6 +227,7 @@ public class NavigationOverlayService extends Service implements LocationListene
     @Override public void onDestroy() {
         try { locationManager.removeUpdates(this); } catch (SecurityException ignored) { }
         stopMedia();
+        if (weatherVoice != null) weatherVoice.shutdown();
         if (windowManager != null && overlayView != null) windowManager.removeView(overlayView);
         super.onDestroy();
     }
