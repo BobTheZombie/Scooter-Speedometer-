@@ -42,7 +42,7 @@ public class RiderLinkClient {
                         if (access.isEmpty()) { callback.complete(true, "Check your email to confirm the account, then sign in.", data); return; }
                         prefs.edit().putString("access", access).putString("refresh", root.optString("refresh_token", ""))
                                 .putString("user_id", user == null ? "" : user.optString("id", ""))
-                                .putString("email", email).apply();
+                                .putString("email", email).putLong("expires_at", System.currentTimeMillis() + root.optLong("expires_in", 3600) * 1000L).apply();
                     } catch (Exception e) { callback.complete(false, "Invalid sign-in response", data); return; }
                 }
                 callback.complete(ok, msg, data);
@@ -78,6 +78,28 @@ public class RiderLinkClient {
         catch (Exception e) { callback.complete(false, e.getMessage(), ""); }
     }
     public void cancelSos(Callback callback) { rest("PATCH", "/rest/v1/sos_alerts?user_id=eq." + userId() + "&active=eq.true", "{\"active\":false}", "return=minimal", callback); }
+    public void refreshSession(Callback callback) {
+        if (System.currentTimeMillis() < prefs.getLong("expires_at", 0) - 120000L) { callback.complete(true, "Session active", ""); return; }
+        try { request("POST", "/auth/v1/token?grant_type=refresh_token", new JSONObject().put("refresh_token", prefs.getString("refresh", "")).toString(), false, (ok,msg,data) -> {
+            if (ok) try { JSONObject root=new JSONObject(data); prefs.edit().putString("access",root.getString("access_token"))
+                    .putString("refresh",root.optString("refresh_token",prefs.getString("refresh","")))
+                    .putLong("expires_at",System.currentTimeMillis()+root.optLong("expires_in",3600)*1000L).apply(); } catch(Exception ignored) { }
+            callback.complete(ok,msg,data);
+        }); } catch(Exception e) { callback.complete(false,e.getMessage(),""); }
+    }
+    public void getProfile(Callback c) { rest("GET", "/rest/v1/profiles?id=eq." + userId() + "&select=*", null, null, c); }
+    public void discoverRiders(Callback c) { rest("GET", "/rest/v1/profiles?id=neq." + userId() + "&select=id,username,scooter&order=username&limit=100", null, null, c); }
+    public void friendRequests(Callback c) { rest("GET", "/rest/v1/friendships?addressee_id=eq." + userId() + "&status=eq.pending&select=id,requester_id,requester:profiles!friendships_requester_id_fkey(username,scooter)", null, null, c); }
+    public void friends(Callback c) { rest("POST", "/rest/v1/rpc/my_friends", "{}", "return=representation", c); }
+    public void requestFriend(String riderId, Callback c) { try { rest("POST", "/rest/v1/friendships", new JSONObject().put("requester_id",userId()).put("addressee_id",riderId).toString(), "return=minimal", c); } catch(Exception e){c.complete(false,e.getMessage(),"");} }
+    public void acceptFriend(long id, Callback c) { rest("PATCH", "/rest/v1/friendships?id=eq." + id + "&addressee_id=eq." + userId(), "{\"status\":\"accepted\"}", "return=minimal", c); }
+    public void directMessages(String riderId, Callback c) { rest("GET", "/rest/v1/direct_messages?or=(and(sender_id.eq."+userId()+",recipient_id.eq."+riderId+"),and(sender_id.eq."+riderId+",recipient_id.eq."+userId()+"))&select=*,sender:profiles!direct_messages_sender_id_fkey(username)&order=created_at.asc&limit=100", null, null, c); }
+    public void sendDirect(String riderId, String message, Callback c) { try { rest("POST", "/rest/v1/direct_messages", new JSONObject().put("sender_id",userId()).put("recipient_id",riderId).put("body",message).toString(), "return=minimal", c); } catch(Exception e){c.complete(false,e.getMessage(),"");} }
+    public void myClubs(Callback c) { rest("POST", "/rest/v1/rpc/my_clubs", "{}", "return=representation", c); }
+    public void createClub(String name, Callback c) { try { rest("POST", "/rest/v1/rpc/create_club", new JSONObject().put("p_name",name).toString(), "return=representation", c); } catch(Exception e){c.complete(false,e.getMessage(),"");} }
+    public void joinClub(String code, Callback c) { try { rest("POST", "/rest/v1/rpc/join_club", new JSONObject().put("p_code",code.toUpperCase()).toString(), "return=representation", c); } catch(Exception e){c.complete(false,e.getMessage(),"");} }
+    public void clubMessages(long clubId, Callback c) { rest("GET", "/rest/v1/club_messages?club_id=eq." + clubId + "&select=*,sender:profiles!club_messages_sender_id_fkey(username)&order=created_at.asc&limit=100", null, null, c); }
+    public void sendClub(long clubId, String message, Callback c) { try { rest("POST", "/rest/v1/club_messages", new JSONObject().put("club_id",clubId).put("sender_id",userId()).put("body",message).toString(), "return=minimal", c); } catch(Exception e){c.complete(false,e.getMessage(),"");} }
     public void signOut() { prefs.edit().clear().apply(); }
     public void shutdown() { worker.shutdownNow(); }
 
