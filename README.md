@@ -39,6 +39,7 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - One-tap private hazard markers for potholes, gravel, flooding, police, construction, and dangerous intersections
 - Spoken and visual warnings when approaching a saved hazard again
 - Original Inferno tuner theme with a carbon/red performance interface, layered gauge rings, illuminated ticks, glowing needle, and coordinated media, weather, navigation, camera, and hazard panels
+- RiderLink beta with rider accounts, profiles, opt-in live presence, a privacy-rounded nearby-rider map, and cancellable SOS alerts
 
 ## Install
 
@@ -87,3 +88,9 @@ Automatic night mode combines the calculated sunset at the current GPS location 
 When OpenStreetMap includes a `maxspeed` tag for the nearby road, its estimated speed limit appears beside the gauge. The gauge turns yellow at the estimated limit and red above the configured threshold. Spoken warnings can be disabled, and the threshold can be set to 0, 3, 5, or 10 mph. Map data may be missing, delayed, or incorrect, so posted roadside signs always take priority.
 
 Tap **Mark Hazard**, select a category, and the current GPS position is stored privately on the phone. Approaching within approximately 90 meters produces a dashboard and spoken warning, with a cooldown to prevent constant repeats. The settings screen can clear all saved markers. These reports are personal markers and are not uploaded to OpenStreetMap or shared with other riders.
+
+## RiderLink beta
+
+Run `supabase/riderlink.sql` once in the project's Supabase SQL Editor before using RiderLink. Tap **Riders** on the dashboard to create an account or sign in. Live location is disabled by default and is published only while the RiderLink screen is open and its **Live** switch is enabled. Turning it off deletes the current presence record. Nearby public locations are rounded to approximately 110 meters and automatically disappear after two minutes without an update.
+
+The SOS button includes a five-second cancellation countdown and then shares an exact emergency location with authenticated nearby riders. RiderLink does not contact 911 or guarantee that another rider will respond; call emergency services separately whenever appropriate.
