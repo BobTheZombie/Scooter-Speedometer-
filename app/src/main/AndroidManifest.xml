@@ -40,6 +40,10 @@
             android:name=".RiderLinkActivity"
             android:screenOrientation="sensor"
             android:exported="false" />
+        <activity
+            android:name=".RiderLinkSocialActivity"
+            android:screenOrientation="sensor"
+            android:exported="false" />
         <service
             android:name=".MediaAccessService"
             android:exported="true"
@@ -53,5 +57,10 @@
             android:name=".NavigationOverlayService"
             android:exported="false"
             android:foregroundServiceType="location" />
+        <service
+            android:name=".RiderLinkPresenceService"
+            android:exported="false"
+            android:foregroundServiceType="location"
+            android:stopWithTask="false" />
     </application>
 </manifest>
