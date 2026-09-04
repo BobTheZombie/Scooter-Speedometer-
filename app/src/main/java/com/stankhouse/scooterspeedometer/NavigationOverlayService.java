@@ -265,6 +265,17 @@ public class NavigationOverlayService extends Service implements LocationListene
             else { int sh = Math.round(bitmap.getWidth() / dr), top = (bitmap.getHeight() - sh) / 2; src = new Rect(0, top, bitmap.getWidth(), top + sh); }
             c.drawBitmap(bitmap, src, dst, paint);
         }
+        private void drawAnimatedCover(Canvas c, Bitmap bitmap, RectF dst) {
+            if (!isPlaying()) { drawCover(c, bitmap, dst); return; }
+            double time = android.os.SystemClock.uptimeMillis() / 1000.0;
+            float pulse = 1.055f + .025f * (float) Math.sin(time * 1.4);
+            float dx = dst.width() * .025f * (float) Math.sin(time * .34);
+            float dy = dst.height() * .02f * (float) Math.cos(time * .29);
+            int save = c.save(); c.clipRect(dst);
+            c.translate(dst.centerX() + dx, dst.centerY() + dy);
+            c.rotate(1.2f * (float) Math.sin(time * .22)); c.scale(pulse, pulse);
+            c.translate(-dst.centerX(), -dst.centerY()); drawCover(c, bitmap, dst); c.restoreToCount(save);
+        }
 
         @Override protected void onDraw(Canvas c) {
             float w = getWidth(), h = getHeight(), scale = getResources().getDisplayMetrics().density;
@@ -285,9 +296,10 @@ public class NavigationOverlayService extends Service implements LocationListene
             Bitmap album = art();
             RectF mediaBackground = new RectF(w * .29f, dp(4), w - dp(6), h - dp(4));
             if (album != null) {
-                paint.setAlpha(115); drawCover(c, album, mediaBackground); paint.setAlpha(255);
+                paint.setAlpha(115); drawAnimatedCover(c, album, mediaBackground); paint.setAlpha(255);
                 paint.setColor(Color.argb(145, 0, 5, 8)); c.drawRoundRect(mediaBackground, dp(22), dp(22), paint);
             }
+            if (isPlaying() && album != null) postInvalidateDelayed(40L);
 
             boolean metric = prefs.getBoolean("metric", false);
             float speed = smoothedMps * (metric ? 3.6f : 2.2369363f);
