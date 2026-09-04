@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.pm.PackageManager;
+import android.content.Intent;
 import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationListener;
@@ -32,16 +33,17 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     private Location fix;
     private WebView map;
     private Switch sharing;
-    private Spinner privacy;
+    private Button privacyButton;
     private TextView status;
     private boolean mapReady;
     private String lastSosSeen = "";
     private final Runnable publish = new Runnable() {
-        @Override public void run() { if (sharing != null && sharing.isChecked() && fix != null) uploadPresence(); handler.postDelayed(this, 10000L); }
+        @Override public void run() { if (fix != null) refreshNearby(); handler.postDelayed(this, 10000L); }
     };
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state); client = new RiderLinkClient(this); locations = (LocationManager) getSystemService(LOCATION_SERVICE);
+        getWindow().getDecorView().setSystemUiVisibility(0);
         getWindow().setStatusBarColor(Color.rgb(7, 15, 20)); getWindow().setNavigationBarColor(Color.BLACK);
         if (client.signedIn()) showRiderLink(); else showAuthentication();
     }
@@ -86,27 +88,39 @@ public class RiderLinkActivity extends Activity implements LocationListener {
 
     private void showRiderLink() {
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(Color.rgb(4, 10, 14));
+        root.setPadding(0, systemBarHeight("status_bar"), 0, systemBarHeight("navigation_bar"));
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL); header.setPadding(dp(10), dp(4), dp(10), dp(4));
-        TextView logo = title("RIDERLINK", 22, Color.rgb(0, 229, 255)); header.addView(logo, new LinearLayout.LayoutParams(0, dp(52), 1));
-        Button profileButton = button("PROFILE", Color.rgb(20, 54, 64)); header.addView(profileButton, new LinearLayout.LayoutParams(dp(105), dp(46))); root.addView(header);
+        TextView logo = title("RIDERLINK", 22, Color.rgb(0, 229, 255)); logo.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL); header.addView(logo, new LinearLayout.LayoutParams(0, dp(54), 1));
+        Button socialButton = button("SOCIAL", Color.rgb(0, 91, 112)); header.addView(socialButton, new LinearLayout.LayoutParams(dp(92), dp(46)));
+        Button profileButton = button("PROFILE", Color.rgb(20, 54, 64)); header.addView(profileButton, new LinearLayout.LayoutParams(dp(92), dp(46))); root.addView(header);
         status = title("Location sharing OFF", 13, Color.rgb(255, 176, 40)); root.addView(status, new LinearLayout.LayoutParams(-1, dp(42)));
         map = new WebView(this); WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         map.setBackgroundColor(Color.rgb(5, 10, 13)); map.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
-        map.setWebViewClient(new android.webkit.WebViewClient() { @Override public void onPageFinished(WebView view, String url) { mapReady = true; refreshNearby(); } });
+        map.setWebViewClient(new android.webkit.WebViewClient() {
+            @Override public void onPageFinished(WebView view, String url) { mapReady = true; refreshNearby(); }
+            @Override public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if(url!=null && url.startsWith("geo:")){try{startActivity(new Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url)));}catch(Exception e){toast("No navigation app found");}return true;}return false;
+            }
+        });
         map.loadUrl("file:///android_asset/riderlink_map.html"); root.addView(map, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout controls = new LinearLayout(this); controls.setPadding(dp(7), dp(5), dp(7), dp(5)); controls.setGravity(Gravity.CENTER);
-        sharing = new Switch(this); sharing.setText("LIVE"); sharing.setTextColor(Color.WHITE); sharing.setGravity(Gravity.CENTER);
-        controls.addView(sharing, new LinearLayout.LayoutParams(0, dp(58), .8f));
-        privacy = new Spinner(this); String[] modes = {"Nearby riders", "Invisible"};
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, modes); privacy.setAdapter(adapter);
-        controls.addView(privacy, new LinearLayout.LayoutParams(0, dp(58), 1.25f));
+        TextView liveLabel=title("LIVE",16,Color.WHITE);controls.addView(liveLabel,new LinearLayout.LayoutParams(dp(56),dp(58)));
+        sharing = new Switch(this); sharing.setShowText(false); sharing.setGravity(Gravity.CENTER); sharing.setChecked(getSharedPreferences("riderlink_session",MODE_PRIVATE).getBoolean("live",false));
+        controls.addView(sharing, new LinearLayout.LayoutParams(dp(64), dp(58)));
+        privacyButton=button("NEARBY",Color.rgb(18,46,55));controls.addView(privacyButton,new LinearLayout.LayoutParams(0,dp(54),.85f));
         Button refresh = button("REFRESH", Color.rgb(0, 95, 115)); controls.addView(refresh, new LinearLayout.LayoutParams(0, dp(54), 1));
         Button sos = button("SOS", Color.rgb(180, 22, 22)); controls.addView(sos, new LinearLayout.LayoutParams(0, dp(54), .75f)); root.addView(controls);
         root.addView(title("RiderLink SOS does not contact 911. Call emergency services when needed.", 10, Color.rgb(150, 160, 164)), new LinearLayout.LayoutParams(-1, dp(34)));
         setContentView(root);
-        sharing.setOnCheckedChangeListener((button, checked) -> { if (checked) uploadPresence(); else { client.goInvisible((ok,m,b)->{}); status.setText("Location sharing OFF"); } });
+        sharing.setOnCheckedChangeListener((button, checked) -> {
+            getSharedPreferences("riderlink_session",MODE_PRIVATE).edit().putBoolean("live",checked).apply();
+            if(checked){uploadPresence();Intent service=new Intent(this,RiderLinkPresenceService.class);if(android.os.Build.VERSION.SDK_INT>=26)startForegroundService(service);else startService(service);}
+            else { stopService(new Intent(this,RiderLinkPresenceService.class)); client.goInvisible((ok,m,b)->{}); status.setText("Location sharing OFF"); }
+        });
         refresh.setOnClickListener(v -> refreshNearby()); sos.setOnClickListener(v -> beginSosCountdown()); profileButton.setOnClickListener(v -> showProfileDialog());
+        socialButton.setOnClickListener(v->startActivity(new Intent(this,RiderLinkSocialActivity.class)));
+        privacyButton.setOnClickListener(v->toast("LIVE shares an approximate public position. Turn LIVE off to become invisible."));
         startLocation(); handler.removeCallbacks(publish); handler.post(publish);
     }
 
@@ -114,14 +128,15 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         LinearLayout panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(dp(20), 0, dp(20), 0);
         panel.setBackgroundColor(Color.rgb(8, 14, 18));
         EditText username = input("Rider name", false), scooter = input("Scooter / bike", false); panel.addView(username); panel.addView(scooter);
-        new AlertDialog.Builder(this).setTitle("Rider profile").setView(panel).setPositiveButton("Save", (d,w) -> {
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Rider profile").setView(panel).setPositiveButton("Save", (d,w) -> {
             String name = username.getText().toString().trim(); if (name.length() < 3) { toast("Rider name must be at least 3 characters"); return; }
             client.saveProfile(name, scooter.getText().toString().trim(), sharing != null && sharing.isChecked() ? "nearby" : "invisible", (ok,m,b) -> toast(ok ? "Profile saved" : m));
         }).setNeutralButton("Sign out", (d,w) -> {
             if (sharing != null && sharing.isChecked()) client.goInvisible((ok,m,b) -> { client.signOut(); showAuthentication(); });
             else { client.signOut(); showAuthentication(); }
         })
-                .setNegativeButton("Cancel", null).show();
+                .setNegativeButton("Cancel", null).create();
+        dialog.setOnShowListener(d->client.getProfile((ok,m,body)->{if(!ok)return;try{org.json.JSONArray list=new org.json.JSONArray(body);if(list.length()>0){org.json.JSONObject p=list.getJSONObject(0);username.setText(p.optString("username"));scooter.setText(p.optString("scooter"));}}catch(Exception ignored){}}));dialog.show();
     }
 
     private void startLocation() {
@@ -131,14 +146,13 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     }
     private void uploadPresence() {
         if (fix == null) { status.setText("Waiting for GPS before sharing…"); return; }
-        String mode = privacy.getSelectedItemPosition() == 0 ? "nearby" : "invisible";
-        if ("invisible".equals(mode)) { sharing.setChecked(false); return; }
-        client.updatePresence(fix.getLatitude(), fix.getLongitude(), fix.getAccuracy(), mode, (ok,m,b) -> status.setText(ok ? "LIVE • visible to nearby riders" : m));
+        client.updatePresence(fix.getLatitude(), fix.getLongitude(), fix.getAccuracy(), "nearby", (ok,m,b) -> status.setText(ok ? "LIVE • visible to nearby riders" : m));
     }
     private void refreshNearby() {
         if (fix == null || !mapReady) return;
         client.nearby(fix.getLatitude(), fix.getLongitude(), (ok, message, body) -> {
             if (!ok) { status.setText(message); return; }
+            try { int count=new org.json.JSONArray(body).length(); status.setText((sharing!=null&&sharing.isChecked()?"LIVE • ":"")+count+" nearby rider"+(count==1?"":"s")); } catch(Exception ignored){}
             String safe = body.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "");
             map.evaluateJavascript("setRiders('" + safe + "'," + fix.getLatitude() + "," + fix.getLongitude() + ")", null);
         });
@@ -184,5 +198,6 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     @Override protected void onPause() { super.onPause(); if (sharing != null && sharing.isChecked()) status.setText("Sharing pauses when RiderLink closes"); }
     @Override protected void onDestroy() { handler.removeCallbacksAndMessages(null); try { locations.removeUpdates(this); } catch (SecurityException ignored) { } if (client != null) client.shutdown(); if (map != null) map.destroy(); super.onDestroy(); }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+    private int systemBarHeight(String name){int id=getResources().getIdentifier(name,"dimen","android");return id>0?getResources().getDimensionPixelSize(id):0;}
     private void toast(String value) { Toast.makeText(this, value, Toast.LENGTH_LONG).show(); }
 }
