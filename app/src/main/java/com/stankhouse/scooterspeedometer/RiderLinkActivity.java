@@ -168,6 +168,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
                 }
             } catch (Exception ignored) { }
         });
+        client.nearbyCommunityHazards(fix.getLatitude(),fix.getLongitude(),(ok,message,body)->{if(!ok)return;String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");map.evaluateJavascript("setCommunityHazards('"+safe+"')",null);});
     }
 
     private void beginSosCountdown() {
