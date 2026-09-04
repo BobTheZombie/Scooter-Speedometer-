@@ -29,6 +29,9 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Built-in, key-free OpenStreetMap navigation with route line, ETA, live GPS following, turn cards, spoken maneuvers, and rerouting
 - Spoken 15-minute rain, thunderstorm, snow, and dangerous-wind forecasts with duplicate cooldowns
 - Spoken National Weather Service alerts and tap-to-mute weather voice control
+- Freely movable weather widget with independent four-corner width/height resizing
+- Long-press weather skin gallery: HTC Sense glass, neon cyan, minimal clear, retro amber, and storm radar
+- Branded launch screen featuring the BobTheZombie scooter mascot and developer credit
 
 ## Install
 
@@ -50,9 +53,13 @@ Choose **Built-in free navigation** to stay inside Scooter Speedometer. The embe
 
 Current weather is loaded automatically from the scooter's GPS position and refreshed about every 10 minutes. The widget shows temperature, conditions, precipitation probability, wind direction, and wind speed. Recent weather remains visible if the connection drops. Weather data is provided by Open-Meteo.
 
-Drag the cyan grip in the weather widget's lower-right corner to resize it. The chosen width and height are restored the next time the app opens.
+Drag the weather widget's body to place it anywhere on the dashboard. Drag any of its four highlighted corners to resize it horizontally and vertically. Position and dimensions are restored the next time the app opens.
 
-Tap the speaker symbol on the weather widget to enable or mute voice weather. Forecast speech checks 15-minute Open-Meteo intervals and warns of approaching rain, thunderstorms, snow, or potentially dangerous wind gusts. Repeated forecasts are suppressed for 45 minutes, while each new moderate-or-higher NWS alert is announced once.
+Tap the weather widget to enable or mute voice weather. Press and hold it to choose between HTC Sense glass, neon cyan, minimal clear, retro amber, and storm radar skins. Forecast speech checks 15-minute Open-Meteo intervals and warns of approaching rain, thunderstorms, snow, or potentially dangerous wind gusts. Repeated forecasts are suppressed for 45 minutes, while each new moderate-or-higher NWS alert is announced once.
+
+## Launch screen
+
+Every launch opens with a short branded screen showing the Scooter Speedometer gauge logo, the original BobTheZombie scooter character, and the **Developed by BobTheZombie** credit before the live dashboard initializes.
 
 The full dashboard background reacts to current conditions with animated sunlight, drifting clouds, rain, snow, fog, or lightning. In the United States, active National Weather Service alerts are checked approximately every five minutes. Moderate, severe, and extreme alerts produce an Android notification; tapping the alert banner opens its full instructions.
 
