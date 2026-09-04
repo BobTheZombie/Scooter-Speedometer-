@@ -37,6 +37,9 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.Switch;
+import android.widget.TextView;
 
 import java.util.List;
 import java.util.Locale;
@@ -354,27 +357,57 @@ public class MainActivity extends Activity implements LocationListener {
     }
 
     private void showRoadSettings() {
-        String voice = roadAwareness.voiceEnabled() ? "On" : "Off";
-        String night = nightMode.enabled() ? "On" : "Off";
-        String oled = nightMode.oled() ? "On" : "Off";
-        String[] choices = {"Automatic night mode · " + night, "Extra-dark OLED · " + oled,
-                "Speed warning voice · " + voice, "Warning threshold · +" + roadAwareness.thresholdMph() + " mph",
-                "Clear " + roadAwareness.hazardCount() + " saved hazards"};
-        new AlertDialog.Builder(this).setTitle("Night & road awareness")
-                .setItems(choices, (dialog, which) -> {
-                    if (which == 0) { nightMode.setEnabled(!nightMode.enabled()); speedView.invalidate(); }
-                    else if (which == 1) { nightMode.setOled(!nightMode.oled()); speedView.invalidate(); }
-                    else if (which == 2) roadAwareness.setVoiceEnabled(!roadAwareness.voiceEnabled());
-                    else if (which == 3) {
-                        String[] levels = {"At the limit", "+3 mph", "+5 mph", "+10 mph"};
-                        int[] values = {0, 3, 5, 10};
-                        new AlertDialog.Builder(this).setTitle("Spoken warning threshold")
-                                .setItems(levels, (d, item) -> roadAwareness.setThresholdMph(values[item])).show();
-                    } else new AlertDialog.Builder(this).setTitle("Clear saved hazards?")
-                            .setMessage("This removes every locally saved hazard marker.")
-                            .setPositiveButton("Clear", (d, w) -> roadAwareness.clearHazards())
-                            .setNegativeButton("Cancel", null).show();
-                }).show();
+        float density = getResources().getDisplayMetrics().density;
+        int pad = Math.round(20 * density), rowPad = Math.round(12 * density);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(pad, Math.round(8 * density), pad, Math.round(4 * density));
+
+        TextView nightHeading = settingsHeading("NIGHT DISPLAY"); panel.addView(nightHeading);
+        Switch automatic = settingsSwitch("Automatic sunset + light sensor", nightMode.enabled());
+        panel.addView(automatic); automatic.setOnCheckedChangeListener((button, checked) -> { nightMode.setEnabled(checked); speedView.invalidate(); });
+        Switch oled = settingsSwitch("Extra-dark OLED mode", nightMode.oled());
+        panel.addView(oled); oled.setOnCheckedChangeListener((button, checked) -> { nightMode.setOled(checked); speedView.invalidate(); });
+
+        TextView roadHeading = settingsHeading("ROAD WARNINGS"); roadHeading.setPadding(0, rowPad, 0, 0); panel.addView(roadHeading);
+        Switch voice = settingsSwitch("Spoken speed warnings", roadAwareness.voiceEnabled());
+        panel.addView(voice); voice.setOnCheckedChangeListener((button, checked) -> roadAwareness.setVoiceEnabled(checked));
+        Switch hazards = settingsSwitch("Hazard proximity alerts", roadAwareness.hazardsEnabled());
+        panel.addView(hazards); hazards.setOnCheckedChangeListener((button, checked) -> roadAwareness.setHazardsEnabled(checked));
+
+        TextView threshold = settingsAction("Overspeed threshold", "+" + roadAwareness.thresholdMph() + " mph");
+        panel.addView(threshold); threshold.setOnClickListener(v -> {
+            String[] levels = {"At the limit", "+3 mph", "+5 mph", "+10 mph"}; int[] values = {0, 3, 5, 10};
+            new AlertDialog.Builder(this).setTitle("Spoken warning threshold")
+                    .setSingleChoiceItems(levels, thresholdIndex(), (d, item) -> {
+                        roadAwareness.setThresholdMph(values[item]); threshold.setText("Overspeed threshold\n+" + values[item] + " mph"); d.dismiss();
+                    }).show();
+        });
+        TextView clear = settingsAction("Clear saved hazards", roadAwareness.hazardCount() + " currently saved");
+        panel.addView(clear); clear.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("Clear saved hazards?")
+                .setMessage("This removes every locally saved hazard marker.")
+                .setPositiveButton("Clear", (d, w) -> { roadAwareness.clearHazards(); clear.setText("Clear saved hazards\n0 currently saved"); })
+                .setNegativeButton("Cancel", null).show());
+
+        new AlertDialog.Builder(this).setTitle("Night & road awareness").setView(panel)
+                .setPositiveButton("Done", null).show();
+    }
+
+    private int thresholdIndex() {
+        int value = roadAwareness.thresholdMph(); return value == 0 ? 0 : value == 3 ? 1 : value == 10 ? 3 : 2;
+    }
+    private TextView settingsHeading(String label) {
+        TextView view = new TextView(this); view.setText(label); view.setTextColor(Color.rgb(0, 190, 220));
+        view.setTextSize(12); view.setAllCaps(true); view.setPadding(0, 0, 0, 2); return view;
+    }
+    private Switch settingsSwitch(String label, boolean checked) {
+        Switch toggle = new Switch(this); toggle.setText(label); toggle.setChecked(checked);
+        toggle.setTextColor(Color.WHITE); toggle.setTextSize(16); toggle.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        toggle.setPadding(0, 7, 0, 7); toggle.setMinHeight(Math.round(52 * getResources().getDisplayMetrics().density)); return toggle;
+    }
+    private TextView settingsAction(String label, String detail) {
+        TextView view = new TextView(this); view.setText(label + "\n" + detail); view.setTextColor(Color.WHITE); view.setTextSize(16);
+        view.setGravity(android.view.Gravity.CENTER_VERTICAL); view.setPadding(0, 8, 0, 8);
+        view.setMinHeight(Math.round(58 * getResources().getDisplayMetrics().density)); return view;
     }
     @Override protected void onDestroy() {
         if (weatherVoice != null) weatherVoice.shutdown();
@@ -479,33 +512,53 @@ public class MainActivity extends Activity implements LocationListener {
         }
 
         private void showDashboardCustomizer() {
-            String[] choices = {editingDashboard ? "Finish editing" : "Drag & resize sections",
-                    "Full portrait preset", "Compact portrait preset", "Full landscape preset",
-                    "Compact landscape preset", "Album-art transparency", "Gauge color",
-                    "Gauge style", "Save layout", "Load layout", "Night & road settings"};
+            String[] choices = {"▦  Layout & presets", "◉  Appearance & media",
+                    "☾  Night & road awareness", "▣  Saved profiles"};
             new AlertDialog.Builder(MainActivity.this).setTitle("Customize dashboard")
                     .setItems(choices, (dialog, which) -> {
-                        if (which == 0) { editingDashboard = !editingDashboard; editingSection = 0; invalidate(); }
-                        else if (which >= 1 && which <= 4) applyPreset(which >= 3, which == 2 || which == 4);
-                        else if (which == 5) {
-                            String[] levels = {"Subtle · 25%", "Balanced · 45%", "Bold · 65%", "Maximum · 85%"};
-                            new AlertDialog.Builder(MainActivity.this).setTitle("Album-art background")
-                                    .setSingleChoiceItems(levels, Math.max(0, Math.min(3, (dashboardLayout.albumAlpha - 50) / 50)),
-                                            (d, item) -> { dashboardLayout.albumAlpha = new int[]{64,115,166,217}[item]; saveDashboard(); invalidate(); d.dismiss(); }).show();
-                        } else if (which == 6) {
-                            String[] colors = {"Cyan", "Lime", "Amber", "Purple", "Red"};
-                            new AlertDialog.Builder(MainActivity.this).setTitle("Gauge color")
-                                    .setSingleChoiceItems(colors, dashboardLayout.gaugeColor,
-                                            (d, item) -> { dashboardLayout.gaugeColor = item; saveDashboard(); invalidate(); d.dismiss(); }).show();
-                        } else if (which == 7) {
-                            String[] styles = {"Classic arc", "Dual arc", "Minimal"};
-                            new AlertDialog.Builder(MainActivity.this).setTitle("Gauge style")
-                                    .setSingleChoiceItems(styles, dashboardLayout.gaugeStyle,
-                                            (d, item) -> { dashboardLayout.gaugeStyle = item; saveDashboard(); invalidate(); d.dismiss(); }).show();
-                        } else if (which == 8) showProfilePicker(true);
-                        else if (which == 9) showProfilePicker(false);
-                        else if (which == 10) showRoadSettings();
+                        if (which == 0) showLayoutMenu();
+                        else if (which == 1) showAppearanceMenu();
+                        else if (which == 2) showRoadSettings();
+                        else showProfilesMenu();
                     }).show();
+        }
+
+        private void showLayoutMenu() {
+            String[] choices = {editingDashboard ? "✓ Finish drag & resize" : "✥ Drag & resize sections",
+                    "Full portrait", "Compact portrait", "Full landscape", "Compact landscape"};
+            new AlertDialog.Builder(MainActivity.this).setTitle("Layout & presets").setItems(choices, (dialog, which) -> {
+                if (which == 0) { editingDashboard = !editingDashboard; editingSection = 0; invalidate(); }
+                else applyPreset(which >= 3, which == 2 || which == 4);
+            }).setNegativeButton("Back", (dialog, which) -> showDashboardCustomizer()).show();
+        }
+
+        private void showAppearanceMenu() {
+            String[] choices = {"Album-art transparency", "Gauge color", "Gauge style", "Weather widget skin"};
+            new AlertDialog.Builder(MainActivity.this).setTitle("Appearance & media").setItems(choices, (dialog, which) -> {
+                if (which == 0) {
+                    String[] levels = {"Subtle · 25%", "Balanced · 45%", "Bold · 65%", "Maximum · 85%"};
+                    new AlertDialog.Builder(MainActivity.this).setTitle("Album-art background")
+                            .setSingleChoiceItems(levels, Math.max(0, Math.min(3, (dashboardLayout.albumAlpha - 50) / 50)),
+                                    (d, item) -> { dashboardLayout.albumAlpha = new int[]{64,115,166,217}[item]; saveDashboard(); invalidate(); d.dismiss(); }).show();
+                } else if (which == 1) {
+                    String[] colors = {"Cyan", "Lime", "Amber", "Purple", "Red"};
+                    new AlertDialog.Builder(MainActivity.this).setTitle("Gauge color")
+                            .setSingleChoiceItems(colors, dashboardLayout.gaugeColor,
+                                    (d, item) -> { dashboardLayout.gaugeColor = item; saveDashboard(); invalidate(); d.dismiss(); }).show();
+                } else if (which == 2) {
+                    String[] styles = {"Classic arc", "Dual arc", "Minimal"};
+                    new AlertDialog.Builder(MainActivity.this).setTitle("Gauge style")
+                            .setSingleChoiceItems(styles, dashboardLayout.gaugeStyle,
+                                    (d, item) -> { dashboardLayout.gaugeStyle = item; saveDashboard(); invalidate(); d.dismiss(); }).show();
+                } else showWeatherSkinPicker();
+            }).setNegativeButton("Back", (dialog, which) -> showDashboardCustomizer()).show();
+        }
+
+        private void showProfilesMenu() {
+            String[] choices = {"Save current layout", "Load saved layout"};
+            new AlertDialog.Builder(MainActivity.this).setTitle("Saved profiles").setItems(choices,
+                    (dialog, which) -> showProfilePicker(which == 0))
+                    .setNegativeButton("Back", (dialog, which) -> showDashboardCustomizer()).show();
         }
 
         private void text(Canvas c, String value, float x, float y, float size, int color, Paint.Align align, boolean bold) {
