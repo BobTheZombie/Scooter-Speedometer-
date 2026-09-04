@@ -71,7 +71,7 @@ The full dashboard background reacts to current conditions with animated sunligh
 
 ## Dashboard customization
 
-Tap **Customize** at the bottom of the dashboard. Choose **Drag & resize sections**, then drag the media, speedometer, or navigation outline to reposition it; drag its lower-right dot to resize it. Tap **Done** to keep the layout. The customization menu also includes compact and full portrait/landscape presets, album-art transparency, gauge color and style choices, and three reusable saved-layout slots.
+Tap **Customize** at the bottom of the dashboard. Settings are organized into **Layout & presets**, **Appearance & media**, **Night & road awareness**, and **Saved profiles**. Under Layout, choose **Drag & resize sections**, then drag the media, speedometer, or navigation outline to reposition it; drag its lower-right dot to resize it. Tap **Done** to keep the layout.
 
 ## Backup camera
 
@@ -81,7 +81,7 @@ This is a supplemental view, not a certified reversing system. It can only show 
 
 ## Night mode and road awareness
 
-Automatic night mode combines the calculated sunset at the current GPS location with the phone's ambient-light sensor. After sustained darkness, the dashboard changes to amber/red controls, reduces album-art intensity, and uses a nearly black OLED-friendly background. Open **Customize → Night & road settings** to toggle automatic switching or extra-dark OLED rendering.
+Automatic night mode combines the calculated sunset at the current GPS location with the phone's ambient-light sensor. After sustained darkness, the dashboard changes to amber/red controls, reduces album-art intensity, and uses a nearly black OLED-friendly background. Open **Customize → Night & road awareness** to control automatic switching, extra-dark OLED rendering, spoken speed warnings, and hazard proximity alerts with toggle switches.
 
 When OpenStreetMap includes a `maxspeed` tag for the nearby road, its estimated speed limit appears beside the gauge. The gauge turns yellow at the estimated limit and red above the configured threshold. Spoken warnings can be disabled, and the threshold can be set to 0, 3, 5, or 10 mph. Map data may be missing, delayed, or incorrect, so posted roadside signs always take priority.
 
