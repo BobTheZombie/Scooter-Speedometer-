@@ -72,6 +72,7 @@ public class MainActivity extends Activity implements LocationListener {
     private long lastWeatherRequest;
     private AutoNightController nightMode;
     private RoadAwarenessManager roadAwareness;
+    private DeliveryCockpit deliveryCockpit;
     private String roadAlert = "";
     private long roadAlertUntil;
     private boolean weatherConsentPrompted;
@@ -104,6 +105,7 @@ public class MainActivity extends Activity implements LocationListener {
                 if (speedView != null) speedView.invalidate();
             }
         });
+        deliveryCockpit = new DeliveryCockpit(this);
         weatherData = weatherRepository.cached();
         weatherAlert = weatherRepository.cachedAlert();
         speedView = new SpeedView(this);
@@ -333,6 +335,7 @@ public class MainActivity extends Activity implements LocationListener {
         lastGoodLocation = location;
         nightMode.updateLocation(location.getLatitude(), location.getLongitude());
         roadAwareness.update(location, smoothedMps);
+        deliveryCockpit.updateMileage(location);
         if (prefs.getBoolean("weather_provider_consent", false) &&
                 SystemClock.elapsedRealtime() - lastWeatherRequest > 60000L) {
             lastWeatherRequest = SystemClock.elapsedRealtime();
@@ -560,6 +563,14 @@ public class MainActivity extends Activity implements LocationListener {
             panel.setBackgroundColor(Color.rgb(9, 12, 15));
             Switch enabled = settingsSwitch("Enable Dasher Mode", prefs.getBoolean("dasher_mode", false));
             panel.addView(enabled);
+            Switch shift = settingsSwitch("Delivery shift / mileage logging", deliveryCockpit.shiftActive());
+            panel.addView(shift);
+            Switch voice = settingsSwitch("Speak incoming offers", prefs.getBoolean("dasher_voice", true));
+            panel.addView(voice);
+            TextView stats = settingsAction("Today's delivery cockpit",
+                    String.format(Locale.US, "%.1f mi • %d offers • $%.2f offered", deliveryCockpit.dailyMiles(),
+                            deliveryCockpit.dailyOffers(), deliveryCockpit.dailyOfferValue()));
+            panel.addView(stats);
             TextView permission = settingsAction("Notification access",
                     hasMediaAccess() ? "Granted" : "Tap here to grant access");
             panel.addView(permission);
@@ -575,6 +586,8 @@ public class MainActivity extends Activity implements LocationListener {
                 if (checked && !hasMediaAccess()) openMediaAccessSettings();
                 invalidate();
             });
+            shift.setOnCheckedChangeListener((button, checked) -> { deliveryCockpit.setShiftActive(checked); invalidate(); });
+            voice.setOnCheckedChangeListener((button, checked) -> prefs.edit().putBoolean("dasher_voice", checked).apply());
             permission.setOnClickListener(v -> openMediaAccessSettings());
             open.setOnClickListener(v -> openDasherApp());
         }
@@ -590,23 +603,37 @@ public class MainActivity extends Activity implements LocationListener {
             if (!prefs.getBoolean("dasher_mode", false)) return;
             String title = prefs.getString("dasher_title", "");
             String body = prefs.getString("dasher_body", "");
+            float offerPay = prefs.getFloat("dasher_offer_pay", 0f);
+            float offerMiles = prefs.getFloat("dasher_offer_miles", 0f);
+            float perMile = prefs.getFloat("dasher_offer_per_mile", 0f);
             long age = System.currentTimeMillis() - prefs.getLong("dasher_time", 0L);
             boolean active = (!TextUtils.isEmpty(title) || !TextUtils.isEmpty(body)) && age < 30L * 60L * 1000L;
-            dasherCard.set(w * .025f, h * .255f, w * .975f, h * .355f);
+            dasherCard.set(w * .025f, h * .255f, w * .975f, h * .375f);
             paint.setColor(active ? Color.argb(242, 155, 12, 25) : Color.argb(225, 14, 20, 25));
             c.drawRoundRect(dasherCard, 18f * scale, 18f * scale, paint);
             paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(2f * scale);
             paint.setColor(active ? Color.rgb(255, 70, 82) : Color.rgb(85, 105, 115));
             c.drawRoundRect(dasherCard, 18f * scale, 18f * scale, paint); paint.setStyle(Paint.Style.FILL);
-            text(c, "DASHER", w * .055f, h * .286f, 12f * scale, active ? Color.WHITE : Color.rgb(165,180,188), Paint.Align.LEFT, true);
+            text(c, "DASHER COCKPIT", w * .055f, h * .282f, 12f * scale, active ? Color.WHITE : Color.rgb(165,180,188), Paint.Align.LEFT, true);
+            text(c, deliveryCockpit.shiftActive() ? "SHIFT ON" : "SHIFT OFF", w * .945f, h * .282f, 11f * scale,
+                    deliveryCockpit.shiftActive() ? Color.rgb(112,255,145) : Color.rgb(190,195,198), Paint.Align.RIGHT, true);
             if (active) {
-                text(c, ellipsize(title, 43), w * .055f, h * .318f, 17f * scale, Color.WHITE, Paint.Align.LEFT, true);
-                text(c, ellipsize(body, 70), w * .055f, h * .344f, 11f * scale, Color.rgb(255,220,220), Paint.Align.LEFT, false);
-                text(c, "OPEN  ›", w * .945f, h * .315f, 13f * scale, Color.WHITE, Paint.Align.RIGHT, true);
+                text(c, ellipsize(title, 38), w * .055f, h * .308f, 15f * scale, Color.WHITE, Paint.Align.LEFT, true);
+                int scoreColor = perMile >= 2f ? Color.rgb(105,255,130) : perMile >= 1f ? Color.rgb(255,195,65) : Color.rgb(255,105,105);
+                String metrics = (offerPay > 0 ? String.format(Locale.US, "$%.2f", offerPay) : "PAY --") + "  •  " +
+                        (offerMiles > 0 ? String.format(Locale.US, "%.1f MI", offerMiles) : "MI --") + "  •  " +
+                        (perMile > 0 ? String.format(Locale.US, "$%.2f/MI", perMile) : "RATE --");
+                text(c, metrics, w * .055f, h * .337f, 15f * scale, scoreColor, Paint.Align.LEFT, true);
+                text(c, ellipsize(body, 62), w * .055f, h * .360f, 10f * scale, Color.rgb(255,220,220), Paint.Align.LEFT, false);
+                text(c, "OPEN  ›", w * .945f, h * .321f, 13f * scale, Color.WHITE, Paint.Align.RIGHT, true);
             } else {
                 text(c, hasMediaAccess() ? "Waiting for DoorDash orders…" : "Tap to grant notification access",
-                        w * .055f, h * .332f, 14f * scale, Color.rgb(175,194,202), Paint.Align.LEFT, false);
+                        w * .055f, h * .320f, 14f * scale, Color.rgb(175,194,202), Paint.Align.LEFT, false);
             }
+            text(c, String.format(Locale.US, "TODAY %.1f MI  •  SHIFT %.1f MI / %d MIN  •  %d OFFERS  •  $%.2f OFFERED",
+                    deliveryCockpit.dailyMiles(), deliveryCockpit.shiftMiles(), deliveryCockpit.shiftMinutes(),
+                    deliveryCockpit.dailyOffers(), deliveryCockpit.dailyOfferValue()),
+                    w * .5f, h * .371f, 9f * scale, Color.rgb(215,225,230), Paint.Align.CENTER, true);
         }
 
         private void showLayoutMenu() {
