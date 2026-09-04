@@ -40,6 +40,7 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Spoken and visual warnings when approaching a saved hazard again
 - Original Inferno tuner theme with a carbon/red performance interface, layered gauge rings, illuminated ticks, glowing needle, and coordinated media, weather, navigation, camera, and hazard panels
 - RiderLink beta with rider accounts, profiles, opt-in live presence, a privacy-rounded nearby-rider map, and cancellable SOS alerts
+- Rider-reported Flock/automated license-plate cameras saved as personal approach warnings and published as clearly unverified RiderLink map markers
 
 ## Install
 
@@ -98,3 +99,5 @@ The SOS button includes a five-second cancellation countdown and then shares an 
 ### RiderLink 3.0 social
 
 Version 3.0 adds renewable login sessions, a foreground LIVE location service with a persistent stop-sharing notification, automatic ten-second map refresh, nearby-rider counts, SOS navigation, rider discovery, friend requests, friends-only direct messages, clubs with shareable invite codes, and club group chat. Re-run the complete `supabase/riderlink.sql` migration once after updating; it preserves existing RiderLink accounts and initial tables while adding the social tables and policies.
+
+Version 3.1 adds **Flock / license-plate camera** to the dashboard hazard picker. Signed-in riders publish these as unverified community markers on the RiderLink live map while also retaining the on-device approach warning. Other road-hazard categories remain private unless a later release adds an explicit sharing choice. Re-run `supabase/riderlink.sql` after updating to add the community-hazard table and secured nearby query.
