@@ -34,6 +34,10 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Branded launch screen featuring the BobTheZombie scooter mascot and developer credit
 - Real-time animated album artwork with cinematic pan, zoom, pulse, rotation, and shifting neon glow while music plays
 - One-tap full-screen front-camera backup view with mirrored/normal modes and high-contrast parking guides
+- Automatic sunset and ambient-light night mode with amber controls, reduced artwork brightness, and extra-dark OLED rendering
+- Live OpenStreetMap speed-limit display with configurable yellow/red overspeed threshold and optional spoken warning
+- One-tap private hazard markers for potholes, gravel, flooding, police, construction, and dangerous intersections
+- Spoken and visual warnings when approaching a saved hazard again
 
 ## Install
 
@@ -74,3 +78,11 @@ Tap **Customize** at the bottom of the dashboard. Choose **Drag & resize section
 Tap **Backup Cam** on the dashboard and grant camera permission the first time. The app opens the phone's front camera as a full-screen, mirrored reverse-view display with green/yellow/red guide lines. Tap **Mirrored** to switch to a normal camera orientation, or **Close** to return to the speedometer. The view is live only: the app does not record, photograph, save, or upload camera data.
 
 This is a supplemental view, not a certified reversing system. It can only show the area behind the scooter when the selected front lens is physically aimed there. Stop first, check the surroundings directly, and never rely on the screen alone.
+
+## Night mode and road awareness
+
+Automatic night mode combines the calculated sunset at the current GPS location with the phone's ambient-light sensor. After sustained darkness, the dashboard changes to amber/red controls, reduces album-art intensity, and uses a nearly black OLED-friendly background. Open **Customize → Night & road settings** to toggle automatic switching or extra-dark OLED rendering.
+
+When OpenStreetMap includes a `maxspeed` tag for the nearby road, its estimated speed limit appears beside the gauge. The gauge turns yellow at the estimated limit and red above the configured threshold. Spoken warnings can be disabled, and the threshold can be set to 0, 3, 5, or 10 mph. Map data may be missing, delayed, or incorrect, so posted roadside signs always take priority.
+
+Tap **Mark Hazard**, select a category, and the current GPS position is stored privately on the phone. Approaching within approximately 90 meters produces a dashboard and spoken warning, with a cooldown to prevent constant repeats. The settings screen can clear all saved markers. These reports are personal markers and are not uploaded to OpenStreetMap or shared with other riders.
