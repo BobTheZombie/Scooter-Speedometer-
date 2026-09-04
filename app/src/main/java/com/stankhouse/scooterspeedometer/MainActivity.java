@@ -447,6 +447,7 @@ public class MainActivity extends Activity implements LocationListener {
         private int editingSection;
         private boolean resizingSection;
         private final RectF mediaSlot = new RectF(), gaugeSlot = new RectF(), navigationSlot = new RectF();
+        private final RectF dasherCard = new RectF();
         private float editStartX, editStartY;
         private final RectF editStartRect = new RectF();
         private boolean customizePressed;
@@ -523,14 +524,63 @@ public class MainActivity extends Activity implements LocationListener {
 
         private void showDashboardCustomizer() {
             String[] choices = {"▦  Layout & presets", "◉  Appearance & media",
-                    "☾  Night & road awareness", "▣  Saved profiles"};
+                    "☾  Night & road awareness", "▣  Delivery / Dasher mode", "▣  Saved profiles"};
             new AlertDialog.Builder(MainActivity.this).setTitle("Customize dashboard")
                     .setItems(choices, (dialog, which) -> {
                         if (which == 0) showLayoutMenu();
                         else if (which == 1) showAppearanceMenu();
                         else if (which == 2) showRoadSettings();
+                        else if (which == 3) showDasherSettings();
                         else showProfilesMenu();
                     }).show();
+        }
+
+        private void showDasherSettings() {
+            boolean enabled = prefs.getBoolean("dasher_mode", false);
+            String[] choices = {enabled ? "✓ Dasher Mode enabled" : "Dasher Mode disabled",
+                    hasMediaAccess() ? "✓ Notification access granted" : "Grant notification access",
+                    "Open Dasher app"};
+            new AlertDialog.Builder(MainActivity.this).setTitle("Delivery / Dasher mode")
+                    .setMessage("Displays DoorDash driver notifications locally on the dashboard. Order acceptance and private details stay in the Dasher app.")
+                    .setItems(choices, (dialog, which) -> {
+                        if (which == 0) {
+                            boolean next = !prefs.getBoolean("dasher_mode", false);
+                            prefs.edit().putBoolean("dasher_mode", next).apply();
+                            if (next && !hasMediaAccess()) openMediaAccessSettings();
+                            invalidate();
+                        } else if (which == 1) openMediaAccessSettings();
+                        else openDasherApp();
+                    }).setNegativeButton("Back", (dialog, which) -> showDashboardCustomizer()).show();
+        }
+
+        private void openDasherApp() {
+            String packageName = prefs.getString("dasher_package", "com.doordash.driverapp");
+            Intent launch = getPackageManager().getLaunchIntentForPackage(packageName);
+            if (launch != null) startActivity(launch);
+            else android.widget.Toast.makeText(MainActivity.this, "Install or open the DoorDash Dasher app first", android.widget.Toast.LENGTH_LONG).show();
+        }
+
+        private void drawDasherCard(Canvas c, float w, float h, float scale) {
+            if (!prefs.getBoolean("dasher_mode", false)) return;
+            String title = prefs.getString("dasher_title", "");
+            String body = prefs.getString("dasher_body", "");
+            long age = System.currentTimeMillis() - prefs.getLong("dasher_time", 0L);
+            boolean active = (!TextUtils.isEmpty(title) || !TextUtils.isEmpty(body)) && age < 30L * 60L * 1000L;
+            dasherCard.set(w * .025f, h * .255f, w * .975f, h * .355f);
+            paint.setColor(active ? Color.argb(242, 155, 12, 25) : Color.argb(225, 14, 20, 25));
+            c.drawRoundRect(dasherCard, 18f * scale, 18f * scale, paint);
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(2f * scale);
+            paint.setColor(active ? Color.rgb(255, 70, 82) : Color.rgb(85, 105, 115));
+            c.drawRoundRect(dasherCard, 18f * scale, 18f * scale, paint); paint.setStyle(Paint.Style.FILL);
+            text(c, "DASHER", w * .055f, h * .286f, 12f * scale, active ? Color.WHITE : Color.rgb(165,180,188), Paint.Align.LEFT, true);
+            if (active) {
+                text(c, ellipsize(title, 43), w * .055f, h * .318f, 17f * scale, Color.WHITE, Paint.Align.LEFT, true);
+                text(c, ellipsize(body, 70), w * .055f, h * .344f, 11f * scale, Color.rgb(255,220,220), Paint.Align.LEFT, false);
+                text(c, "OPEN  ›", w * .945f, h * .315f, 13f * scale, Color.WHITE, Paint.Align.RIGHT, true);
+            } else {
+                text(c, hasMediaAccess() ? "Waiting for DoorDash orders…" : "Tap to grant notification access",
+                        w * .055f, h * .332f, 14f * scale, Color.rgb(175,194,202), Paint.Align.LEFT, false);
+            }
         }
 
         private void showLayoutMenu() {
@@ -961,6 +1011,7 @@ public class MainActivity extends Activity implements LocationListener {
             c.restoreToCount(mediaSave);
             drawWeatherPanel(c, w, h, scale);
             drawAlertBanner(c, w, h, scale);
+            drawDasherCard(c, w, h, scale);
             boolean fresh = lastFixElapsed > 0 && SystemClock.elapsedRealtime() - lastFixElapsed < 3500;
             boolean permission = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
             boolean gpsOn = false;
@@ -1148,6 +1199,11 @@ public class MainActivity extends Activity implements LocationListener {
             }
             if (e.getAction() == MotionEvent.ACTION_UP) {
                 float w = getWidth(), h = getHeight();
+                if (!editingDashboard && prefs.getBoolean("dasher_mode", false) && dasherCard.contains(e.getX(), e.getY()) &&
+                        dasherCard.contains(downX, downY)) {
+                    if (!hasMediaAccess()) openMediaAccessSettings(); else openDasherApp();
+                    return true;
+                }
                 boolean backupPressed = !editingDashboard && downX >= w * .015f && downX <= w * .255f &&
                         downY >= h * .90f && downY <= h * .96f &&
                         e.getX() >= w * .015f && e.getX() <= w * .255f && e.getY() >= h * .90f && e.getY() <= h * .96f;
