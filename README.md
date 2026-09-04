@@ -4,7 +4,9 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 
 ## Features
 
-- Dasher Mode mirrors DoorDash driver notifications into a large, glanceable on-device delivery card and opens the Dasher app for protected actions
+- Dasher Mode has a persistent toggle, mirrors DoorDash driver notifications into a large on-device delivery card, and opens Dasher for protected actions
+- Live Open-Meteo conditions refresh every two minutes while riding; official NWS alerts refresh on the same cycle
+- HTC Sense weather skin animates live sun, clouds, rain, snow and lightning from the current weather code
 - Large digital speed display with animated gauge arc
 - Tap anywhere to switch MPH / KM/H
 - GPS accuracy and satellites-used status
