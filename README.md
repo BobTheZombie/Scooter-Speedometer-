@@ -38,6 +38,7 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Live OpenStreetMap speed-limit display with configurable yellow/red overspeed threshold and optional spoken warning
 - One-tap private hazard markers for potholes, gravel, flooding, police, construction, and dangerous intersections
 - Spoken and visual warnings when approaching a saved hazard again
+- Original Inferno tuner theme with a carbon/red performance interface, layered gauge rings, illuminated ticks, glowing needle, and coordinated media, weather, navigation, camera, and hazard panels
 
 ## Install
 
@@ -71,7 +72,7 @@ The full dashboard background reacts to current conditions with animated sunligh
 
 ## Dashboard customization
 
-Tap **Customize** at the bottom of the dashboard. Settings are organized into **Layout & presets**, **Appearance & media**, **Night & road awareness**, and **Saved profiles**. Under Layout, choose **Drag & resize sections**, then drag the media, speedometer, or navigation outline to reposition it; drag its lower-right dot to resize it. Tap **Done** to keep the layout.
+Tap **Customize** at the bottom of the dashboard. Settings are organized into **Layout & presets**, **Appearance & media**, **Night & road awareness**, and **Saved profiles**. Under Layout, choose **Drag & resize sections**, then drag the media, speedometer, or navigation outline to reposition it; drag its lower-right dot to resize it. Tap **Done** to keep the layout. Choose **Appearance & media → Dashboard theme → Inferno tuner** for the performance-tuner interface.
 
 ## Backup camera
 
