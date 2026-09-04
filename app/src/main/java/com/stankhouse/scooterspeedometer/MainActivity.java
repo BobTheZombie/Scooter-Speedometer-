@@ -74,6 +74,7 @@ public class MainActivity extends Activity implements LocationListener {
     private RoadAwarenessManager roadAwareness;
     private String roadAlert = "";
     private long roadAlertUntil;
+    private boolean weatherConsentPrompted;
 
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
         @Override public void onMetadataChanged(MediaMetadata metadata) { mediaMetadata = metadata; speedView.invalidate(); }
@@ -133,10 +134,25 @@ public class MainActivity extends Activity implements LocationListener {
         nightMode.start();
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) startGps();
         refreshMedia();
+        if (!weatherConsentPrompted && !prefs.contains("weather_provider_consent")) {
+            weatherConsentPrompted = true;
+            speedView.post(this::showWeatherProviderConsent);
+        }
         if (navigationPermissionPending && Settings.canDrawOverlays(this)) {
             navigationPermissionPending = false;
             speedView.post(this::showDestinationDialog);
         }
+    }
+
+    private void showWeatherProviderConsent() {
+        new AlertDialog.Builder(this).setTitle("Enable live weather?")
+                .setMessage("To show local conditions and warnings, Scooter Speedometer sends your current GPS coordinates to Open-Meteo for weather and weather.gov for official U.S. alerts. Weather data stays out of RiderLink and Supabase.")
+                .setPositiveButton("Enable live weather", (dialog, which) -> {
+                    prefs.edit().putBoolean("weather_provider_consent", true).apply();
+                    lastWeatherRequest = 0L;
+                })
+                .setNegativeButton("Not now", (dialog, which) ->
+                        prefs.edit().putBoolean("weather_provider_consent", false).apply()).show();
     }
     @Override protected void onPause() { super.onPause(); nightMode.stop(); stopGps(); stopMediaListener(); saveStats(); }
 
@@ -317,7 +333,8 @@ public class MainActivity extends Activity implements LocationListener {
         lastGoodLocation = location;
         nightMode.updateLocation(location.getLatitude(), location.getLongitude());
         roadAwareness.update(location, smoothedMps);
-        if (SystemClock.elapsedRealtime() - lastWeatherRequest > 60000L) {
+        if (prefs.getBoolean("weather_provider_consent", false) &&
+                SystemClock.elapsedRealtime() - lastWeatherRequest > 60000L) {
             lastWeatherRequest = SystemClock.elapsedRealtime();
             weatherRepository.update(location.getLatitude(), location.getLongitude(), data -> {
                 weatherData = data;
@@ -602,7 +619,7 @@ public class MainActivity extends Activity implements LocationListener {
         }
 
         private void showAppearanceMenu() {
-            String[] choices = {"Dashboard theme", "Album-art transparency", "Gauge color", "Gauge style", "Weather widget skin"};
+            String[] choices = {"Dashboard theme", "Album-art transparency", "Gauge color", "Gauge style", "Weather widget skin", "Live weather provider"};
             new AlertDialog.Builder(MainActivity.this).setTitle("Appearance & media").setItems(choices, (dialog, which) -> {
                 if (which == 0) {
                     String[] themes = {"Classic dashboard", "Inferno tuner"};
@@ -625,7 +642,8 @@ public class MainActivity extends Activity implements LocationListener {
                     new AlertDialog.Builder(MainActivity.this).setTitle("Gauge style")
                             .setSingleChoiceItems(styles, dashboardLayout.gaugeStyle,
                                     (d, item) -> { dashboardLayout.gaugeStyle = item; saveDashboard(); invalidate(); d.dismiss(); }).show();
-                } else showWeatherSkinPicker();
+                } else if (which == 4) showWeatherSkinPicker();
+                else showWeatherProviderConsent();
             }).setNegativeButton("Back", (dialog, which) -> showDashboardCustomizer()).show();
         }
 
