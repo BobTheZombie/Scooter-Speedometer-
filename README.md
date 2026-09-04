@@ -4,6 +4,7 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 
 ## Features
 
+- Dasher Mode mirrors DoorDash driver notifications into a large, glanceable on-device delivery card and opens the Dasher app for protected actions
 - Large digital speed display with animated gauge arc
 - Tap anywhere to switch MPH / KM/H
 - GPS accuracy and satellites-used status
