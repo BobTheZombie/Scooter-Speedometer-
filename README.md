@@ -32,6 +32,7 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Freely movable weather widget with independent four-corner width/height resizing
 - Long-press weather skin gallery: HTC Sense glass, neon cyan, minimal clear, retro amber, and storm radar
 - Branded launch screen featuring the BobTheZombie scooter mascot and developer credit
+- Real-time animated album artwork with cinematic pan, zoom, pulse, rotation, and shifting neon glow while music plays
 
 ## Install
 
