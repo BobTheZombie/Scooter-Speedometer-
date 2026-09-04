@@ -1026,6 +1026,11 @@ public class MainActivity extends Activity implements LocationListener {
             c.drawRoundRect(backupCamera, 14f * scale, 14f * scale, paint);
             text(c, "◀ BACKUP CAM", w * .135f, h * .939f, 12f * scale,
                     Color.rgb(91, 255, 188), Paint.Align.CENTER, true);
+            paint.setColor(Color.argb(235, 3, 50, 67));
+            RectF riderLink = new RectF(w * .255f, h * .91f, w * .395f, h * .952f);
+            c.drawRoundRect(riderLink, 14f * scale, 14f * scale, paint);
+            text(c, "● RIDERS", w * .325f, h * .939f, 10f * scale,
+                    Color.rgb(0, 229, 255), Paint.Align.CENTER, true);
             drawRoadAwareness(c, w, h, scale, shownMph);
             if (dashboardTheme == 1) drawInfernoFrames(c, scale);
             if (editingDashboard) drawEditorOverlay(c, scale);
@@ -1145,7 +1150,12 @@ public class MainActivity extends Activity implements LocationListener {
                 boolean hazardPressed = !editingDashboard && downX >= w * .745f && downX <= w * .985f &&
                         downY >= h * .90f && downY <= h * .96f &&
                         e.getX() >= w * .745f && e.getX() <= w * .985f && e.getY() >= h * .90f && e.getY() <= h * .96f;
-                if (hazardPressed) {
+                boolean riderLinkPressed = !editingDashboard && downX >= w * .245f && downX <= w * .405f &&
+                        downY >= h * .90f && downY <= h * .96f && e.getX() >= w * .245f &&
+                        e.getX() <= w * .405f && e.getY() >= h * .90f && e.getY() <= h * .96f;
+                if (riderLinkPressed) {
+                    startActivity(new Intent(MainActivity.this, RiderLinkActivity.class));
+                } else if (hazardPressed) {
                     showHazardPicker();
                 } else if (backupPressed) {
                     openBackupCamera();
