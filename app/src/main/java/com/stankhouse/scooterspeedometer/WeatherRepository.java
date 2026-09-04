@@ -118,8 +118,9 @@ public class WeatherRepository {
         }
     }
 
-    private static final long CACHE_MS = 10 * 60 * 1000L;
-    private static final long ALERT_CACHE_MS = 5 * 60 * 1000L;
+    // Refresh frequently while riding, without hammering the providers on every GPS fix.
+    private static final long CACHE_MS = 2 * 60 * 1000L;
+    private static final long ALERT_CACHE_MS = 2 * 60 * 1000L;
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
     private static boolean fetching;
     private static boolean fetchingAlerts;
@@ -170,7 +171,7 @@ public class WeatherRepository {
                 connection = (HttpURLConnection) new URL(endpoint).openConnection();
                 connection.setConnectTimeout(8000);
                 connection.setReadTimeout(8000);
-                connection.setRequestProperty("User-Agent", "Scooter-Speedometer/1.4");
+                connection.setRequestProperty("User-Agent", "Scooter-Speedometer/3.3");
                 BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
                 StringBuilder json = new StringBuilder();
                 String line;
@@ -240,7 +241,7 @@ public class WeatherRepository {
                 connection.setConnectTimeout(9000);
                 connection.setReadTimeout(9000);
                 connection.setRequestProperty("User-Agent",
-                        "Scooter-Speedometer/1.4 (github.com/BobTheZombie/Scooter-Speedometer-)");
+                        "Scooter-Speedometer/3.3 (github.com/BobTheZombie/Scooter-Speedometer-)");
                 connection.setRequestProperty("Accept", "application/geo+json");
                 BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
                 StringBuilder json = new StringBuilder();
