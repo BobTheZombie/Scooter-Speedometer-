@@ -49,12 +49,14 @@ public class RoadAwarenessManager implements TextToSpeech.OnInitListener {
     public void setThresholdMph(int value) { prefs.edit().putInt("threshold", value).apply(); callback.onRoadDataChanged(); }
     public boolean voiceEnabled() { return prefs.getBoolean("voice", true); }
     public void setVoiceEnabled(boolean value) { prefs.edit().putBoolean("voice", value).apply(); if (!value) speech.stop(); }
+    public boolean hazardsEnabled() { return prefs.getBoolean("hazards_enabled", true); }
+    public void setHazardsEnabled(boolean value) { prefs.edit().putBoolean("hazards_enabled", value).apply(); }
     public int hazardCount() { return hazards().length(); }
     public void clearHazards() { prefs.edit().remove("hazards").apply(); callback.onRoadDataChanged(); }
 
     public void update(Location location, float speedMps) {
         if (location == null) return;
-        checkHazards(location);
+        if (hazardsEnabled()) checkHazards(location);
         checkSpeed(speedMps * 2.2369363f);
         long now = System.currentTimeMillis();
         if (!fetching && now - lastFetch >= LIMIT_REFRESH_MS &&
