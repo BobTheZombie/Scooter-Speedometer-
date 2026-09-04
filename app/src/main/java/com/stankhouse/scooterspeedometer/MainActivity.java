@@ -328,8 +328,16 @@ public class MainActivity extends Activity implements LocationListener {
         private float downX, downY;
         private final RectF weatherPanelRect = new RectF();
         private boolean resizingWeather;
+        private boolean draggingWeather;
+        private boolean weatherMoved;
+        private int weatherResizeCorner;
+        private float weatherStartX, weatherStartY;
+        private final RectF weatherStartRect = new RectF();
+        private float weatherLeftFraction = prefs.getFloat("weather_left", .045f);
+        private float weatherTopFraction = prefs.getFloat("weather_top", .265f);
         private float weatherWidthFraction = prefs.getFloat("weather_width", .355f);
         private float weatherHeightFraction = prefs.getFloat("weather_height", .085f);
+        private int weatherSkin = prefs.getInt("weather_skin", 0);
         private DashboardLayout dashboardLayout;
         private boolean editingDashboard;
         private int editingSection;
@@ -369,6 +377,16 @@ public class MainActivity extends Activity implements LocationListener {
 
         private void saveDashboard() {
             prefs.edit().putString("dashboard_layout", dashboardLayout.encode()).apply();
+        }
+
+        private void showWeatherSkinPicker() {
+            String[] skins = {"HTC Sense glass", "Neon cyan", "Minimal clear",
+                    "Retro amber", "Storm radar"};
+            new AlertDialog.Builder(MainActivity.this).setTitle("Weather widget skin")
+                    .setSingleChoiceItems(skins, weatherSkin, (dialog, which) -> {
+                        weatherSkin = which; prefs.edit().putInt("weather_skin", which).apply();
+                        invalidate(); dialog.dismiss();
+                    }).setNegativeButton("Cancel", null).show();
         }
 
         private void applyPreset(boolean landscape, boolean compact) {
@@ -510,45 +528,71 @@ public class MainActivity extends Activity implements LocationListener {
         }
 
         private void drawWeatherPanel(Canvas c, float w, float h, float scale) {
-            weatherWidthFraction = Math.max(.27f, Math.min(.535f, weatherWidthFraction));
-            weatherHeightFraction = Math.max(.07f, Math.min(.17f, weatherHeightFraction));
-            weatherPanelRect.set(w * .045f, h * .265f,
-                    w * (.045f + weatherWidthFraction), h * (.265f + weatherHeightFraction));
+            weatherWidthFraction = Math.max(.20f, Math.min(.80f, weatherWidthFraction));
+            weatherHeightFraction = Math.max(.06f, Math.min(.28f, weatherHeightFraction));
+            weatherLeftFraction = Math.max(.01f, Math.min(.99f - weatherWidthFraction, weatherLeftFraction));
+            weatherTopFraction = Math.max(.01f, Math.min(.90f - weatherHeightFraction, weatherTopFraction));
+            weatherPanelRect.set(w * weatherLeftFraction, h * weatherTopFraction,
+                    w * (weatherLeftFraction + weatherWidthFraction), h * (weatherTopFraction + weatherHeightFraction));
             RectF panel = weatherPanelRect;
             float panelScale = Math.max(.82f, Math.min(1.55f, panel.height() / (h * .085f)));
             float left = panel.left, top = panel.top, pw = panel.width(), ph = panel.height();
             paint.setStyle(Paint.Style.FILL);
-            paint.setColor(Color.argb(215, 4, 14, 20));
+            int accent = weatherSkin == 3 ? Color.rgb(255, 174, 0) : weatherSkin == 4 ?
+                    Color.rgb(55, 150, 255) : Color.rgb(0, 229, 255);
+            int primary = weatherSkin == 3 ? Color.rgb(255, 218, 130) : Color.WHITE;
+            int secondary = weatherSkin == 2 ? Color.rgb(220, 230, 235) :
+                    weatherSkin == 3 ? Color.rgb(255, 190, 70) : Color.rgb(184, 204, 214);
+            if (weatherSkin == 0) {
+                paint.setShader(new LinearGradient(panel.left, panel.top, panel.right, panel.bottom,
+                        Color.argb(232, 12, 34, 45), Color.argb(205, 1, 8, 13), Shader.TileMode.CLAMP));
+            } else if (weatherSkin == 1) paint.setColor(Color.argb(225, 0, 12, 18));
+            else if (weatherSkin == 2) paint.setColor(Color.argb(125, 0, 5, 8));
+            else if (weatherSkin == 3) paint.setColor(Color.argb(235, 28, 17, 2));
+            else {
+                paint.setShader(new LinearGradient(panel.left, panel.top, panel.right, panel.bottom,
+                        Color.argb(238, 5, 35, 72), Color.argb(225, 18, 5, 42), Shader.TileMode.CLAMP));
+            }
             c.drawRoundRect(panel, 18f * scale, 18f * scale, paint);
+            paint.setShader(null);
+            if (weatherSkin == 1 || weatherSkin == 3) {
+                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth((weatherSkin == 1 ? 3f : 2f) * scale);
+                paint.setColor(accent); c.drawRoundRect(panel, 18f * scale, 18f * scale, paint); paint.setStyle(Paint.Style.FILL);
+            } else if (weatherSkin == 4) {
+                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(1.5f * scale);
+                for (int i = 1; i <= 3; i++) { paint.setColor(Color.argb(50, 70, 190, 255));
+                    c.drawCircle(panel.right - ph * .55f, panel.centerY(), ph * .13f * i, paint); }
+                paint.setStyle(Paint.Style.FILL);
+            }
             text(c, weatherVoice.enabled() ? "🔊" : "🔇", panel.right - pw * .055f,
-                    panel.top + ph * .24f, 10f * scale * panelScale, Color.WHITE, Paint.Align.RIGHT, true);
+                    panel.top + ph * .24f, 10f * scale * panelScale, primary, Paint.Align.RIGHT, true);
             if (weatherData == null) {
                 text(c, "◌  WEATHER", left + pw * .085f, top + ph * .44f, 15f * scale * panelScale,
-                        Color.rgb(0, 229, 255), Paint.Align.LEFT, true);
+                        accent, Paint.Align.LEFT, true);
                 text(c, "Loading…", left + pw * .085f, top + ph * .76f, 12f * scale * panelScale,
-                        Color.rgb(170, 191, 201), Paint.Align.LEFT, false);
+                        secondary, Paint.Align.LEFT, false);
             } else {
                 text(c, weatherData.icon(), left + pw * .09f, top + ph * .67f, 34f * scale * panelScale,
-                        Color.rgb(255, 193, 7), Paint.Align.LEFT, true);
+                        weatherSkin == 3 ? accent : Color.rgb(255, 193, 7), Paint.Align.LEFT, true);
                 text(c, String.format(Locale.US, "%.0f°", weatherData.temperature), left + pw * .30f,
-                        top + ph * .55f, 27f * scale * panelScale, Color.WHITE, Paint.Align.LEFT, true);
+                        top + ph * .55f, 27f * scale * panelScale, primary, Paint.Align.LEFT, true);
                 text(c, ellipsize(weatherData.condition(), Math.max(9, Math.round(17 * weatherWidthFraction / .355f))),
                         left + pw * .30f, top + ph * .84f, 11f * scale * panelScale,
-                        Color.rgb(184, 204, 214), Paint.Align.LEFT, false);
+                        secondary, Paint.Align.LEFT, false);
                 text(c, "☂ " + weatherData.rainChance + "%", left + pw * .68f, top + ph * .43f,
-                        12f * scale * panelScale, Color.rgb(110, 210, 255), Paint.Align.LEFT, true);
+                        12f * scale * panelScale, accent, Paint.Align.LEFT, true);
                 text(c, String.format(Locale.US, "%s %.0f mph", weatherData.windCompass(), weatherData.windSpeed),
                         left + pw * .68f, top + ph * .78f, 11f * scale * panelScale,
-                        Color.rgb(205, 216, 222), Paint.Align.LEFT, false);
+                        secondary, Paint.Align.LEFT, false);
             }
-            paint.setColor(Color.rgb(0, 229, 255));
+            paint.setColor(accent);
             paint.setStrokeWidth(Math.max(2f, 2f * scale));
             paint.setStyle(Paint.Style.STROKE);
             float grip = Math.max(12f * scale, Math.min(panel.width(), panel.height()) * .18f);
-            c.drawLine(panel.right - grip, panel.bottom - 3f * scale, panel.right - 3f * scale,
-                    panel.bottom - grip, paint);
-            c.drawLine(panel.right - grip * .55f, panel.bottom - 3f * scale, panel.right - 3f * scale,
-                    panel.bottom - grip * .55f, paint);
+            c.drawLine(panel.left, panel.top + grip, panel.left + grip, panel.top, paint);
+            c.drawLine(panel.right - grip, panel.top, panel.right, panel.top + grip, paint);
+            c.drawLine(panel.left, panel.bottom - grip, panel.left + grip, panel.bottom, paint);
+            c.drawLine(panel.right - grip, panel.bottom, panel.right, panel.bottom - grip, paint);
             paint.setStyle(Paint.Style.FILL);
         }
 
@@ -629,7 +673,8 @@ public class MainActivity extends Activity implements LocationListener {
         private void drawAlertBanner(Canvas c, float w, float h, float scale) {
             if (weatherAlert == null || !weatherAlert.active()) return;
             int color = weatherAlert.severityRank() >= 3 ? Color.rgb(190, 32, 38) : Color.rgb(213, 109, 20);
-            float bannerLeft = Math.max(w * .42f, weatherPanelRect.right + w * .02f);
+            boolean overlapsWeatherRow = weatherPanelRect.bottom > h * .265f && weatherPanelRect.top < h * .35f;
+            float bannerLeft = overlapsWeatherRow ? Math.max(w * .42f, weatherPanelRect.right + w * .02f) : w * .42f;
             RectF banner = new RectF(bannerLeft, h * .265f, w * .955f, h * .35f);
             paint.setColor(Color.argb(235, Color.red(color), Color.green(color), Color.blue(color)));
             paint.setStyle(Paint.Style.FILL); c.drawRoundRect(banner, 18f * scale, 18f * scale, paint);
@@ -752,6 +797,18 @@ public class MainActivity extends Activity implements LocationListener {
             if (rect.bottom > .90f) rect.offset(0, .90f - rect.bottom);
         }
 
+        private void clampWeatherRect(RectF rect, int corner) {
+            float minW = .20f, minH = .06f, maxW = .80f, maxH = .28f;
+            if (rect.width() < minW) { if (corner == 1 || corner == 3) rect.left = rect.right - minW; else rect.right = rect.left + minW; }
+            if (rect.height() < minH) { if (corner == 1 || corner == 2) rect.top = rect.bottom - minH; else rect.bottom = rect.top + minH; }
+            if (rect.width() > maxW) { if (corner == 1 || corner == 3) rect.left = rect.right - maxW; else rect.right = rect.left + maxW; }
+            if (rect.height() > maxH) { if (corner == 1 || corner == 2) rect.top = rect.bottom - maxH; else rect.bottom = rect.top + maxH; }
+            if (rect.left < .01f) rect.offset(.01f - rect.left, 0);
+            if (rect.right > .99f) rect.offset(.99f - rect.right, 0);
+            if (rect.top < .01f) rect.offset(0, .01f - rect.top);
+            if (rect.bottom > .90f) rect.offset(0, .90f - rect.bottom);
+        }
+
         @Override public boolean onTouchEvent(MotionEvent e) {
             if (e.getAction() == MotionEvent.ACTION_DOWN) {
                 downAt = SystemClock.elapsedRealtime(); downX = e.getX(); downY = e.getY();
@@ -771,12 +828,21 @@ public class MainActivity extends Activity implements LocationListener {
                     }
                     invalidate(); return true;
                 }
-                float grip = Math.max(32f * getResources().getDisplayMetrics().density,
-                        Math.min(weatherPanelRect.width(), weatherPanelRect.height()) * .32f);
-                resizingWeather = e.getX() >= weatherPanelRect.right - grip &&
-                        e.getX() <= weatherPanelRect.right + grip * .25f &&
-                        e.getY() >= weatherPanelRect.bottom - grip &&
-                        e.getY() <= weatherPanelRect.bottom + grip * .25f;
+                resizingWeather = false; draggingWeather = false; weatherMoved = false; weatherResizeCorner = 0;
+                if (weatherPanelRect.contains(e.getX(), e.getY())) {
+                    float grip = Math.max(30f * getResources().getDisplayMetrics().density,
+                            Math.min(weatherPanelRect.width(), weatherPanelRect.height()) * .28f);
+                    boolean left = e.getX() <= weatherPanelRect.left + grip;
+                    boolean right = e.getX() >= weatherPanelRect.right - grip;
+                    boolean top = e.getY() <= weatherPanelRect.top + grip;
+                    boolean bottom = e.getY() >= weatherPanelRect.bottom - grip;
+                    weatherResizeCorner = left && top ? 1 : right && top ? 2 : left && bottom ? 3 : right && bottom ? 4 : 0;
+                    resizingWeather = weatherResizeCorner != 0;
+                    draggingWeather = !resizingWeather;
+                    weatherStartX = e.getX(); weatherStartY = e.getY();
+                    weatherStartRect.set(weatherLeftFraction, weatherTopFraction,
+                            weatherLeftFraction + weatherWidthFraction, weatherTopFraction + weatherHeightFraction);
+                }
                 return true;
             }
             if (e.getAction() == MotionEvent.ACTION_MOVE && editingDashboard && editingSection != 0) {
@@ -789,10 +855,19 @@ public class MainActivity extends Activity implements LocationListener {
                 clampEditedRect(rect, editingSection == 3 ? .16f : .24f, editingSection == 3 ? .04f : .12f);
                 invalidate(); return true;
             }
-            if (e.getAction() == MotionEvent.ACTION_MOVE && resizingWeather) {
-                float w = getWidth(), h = getHeight();
-                weatherWidthFraction = Math.max(.27f, Math.min(.535f, e.getX() / w - .045f));
-                weatherHeightFraction = Math.max(.07f, Math.min(.17f, e.getY() / h - .265f));
+            if (e.getAction() == MotionEvent.ACTION_MOVE && (resizingWeather || draggingWeather)) {
+                float dx = (e.getX() - weatherStartX) / getWidth();
+                float dy = (e.getY() - weatherStartY) / getHeight();
+                if (Math.hypot(e.getX() - weatherStartX, e.getY() - weatherStartY) > 12f) weatherMoved = true;
+                RectF changed = new RectF(weatherStartRect);
+                if (draggingWeather) changed.offset(dx, dy);
+                else if (weatherResizeCorner == 1) { changed.left += dx; changed.top += dy; }
+                else if (weatherResizeCorner == 2) { changed.right += dx; changed.top += dy; }
+                else if (weatherResizeCorner == 3) { changed.left += dx; changed.bottom += dy; }
+                else { changed.right += dx; changed.bottom += dy; }
+                clampWeatherRect(changed, weatherResizeCorner);
+                weatherLeftFraction = changed.left; weatherTopFraction = changed.top;
+                weatherWidthFraction = changed.width(); weatherHeightFraction = changed.height();
                 invalidate();
                 return true;
             }
@@ -804,12 +879,15 @@ public class MainActivity extends Activity implements LocationListener {
                     else showDashboardCustomizer();
                 } else if (editingDashboard && editingSection != 0) {
                     saveDashboard(); editingSection = 0; resizingSection = false; invalidate();
-                } else if (resizingWeather) {
-                    prefs.edit().putFloat("weather_width", weatherWidthFraction)
+                } else if (resizingWeather || draggingWeather) {
+                    long held = SystemClock.elapsedRealtime() - downAt;
+                    if (weatherMoved) prefs.edit().putFloat("weather_left", weatherLeftFraction)
+                            .putFloat("weather_top", weatherTopFraction)
+                            .putFloat("weather_width", weatherWidthFraction)
                             .putFloat("weather_height", weatherHeightFraction).apply();
-                    resizingWeather = false;
-                } else if (weatherPanelRect.contains(e.getX(), e.getY())) {
-                    weatherVoice.setEnabled(!weatherVoice.enabled()); invalidate();
+                    else if (draggingWeather && held >= 700L) showWeatherSkinPicker();
+                    else if (draggingWeather) weatherVoice.setEnabled(!weatherVoice.enabled());
+                    resizingWeather = false; draggingWeather = false; weatherResizeCorner = 0; invalidate();
                 } else if (mediaSlot.contains(e.getX(), e.getY())) {
                     float sourceX = w * (.035f + (e.getX() - mediaSlot.left) / mediaSlot.width() * .93f);
                     float sourceY = h * (.025f + (e.getY() - mediaSlot.top) / mediaSlot.height() * .22f);
@@ -836,7 +914,8 @@ public class MainActivity extends Activity implements LocationListener {
                 performClick(); return true;
             }
             if (e.getAction() == MotionEvent.ACTION_CANCEL) {
-                resizingWeather = false; resizingSection = false; editingSection = 0; customizePressed = false;
+                resizingWeather = false; draggingWeather = false; resizingSection = false;
+                editingSection = 0; customizePressed = false;
             }
             return true;
         }
