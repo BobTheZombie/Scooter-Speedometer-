@@ -43,6 +43,7 @@ import java.util.Locale;
 
 public class MainActivity extends Activity implements LocationListener {
     private static final int LOCATION_REQUEST = 42;
+    private static final int CAMERA_REQUEST = 44;
     private LocationManager locationManager;
     private MediaSessionManager mediaSessionManager;
     private AudioManager audioManager;
@@ -203,6 +204,14 @@ public class MainActivity extends Activity implements LocationListener {
         return max <= 0 ? 0 : Math.round(100f * audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / max);
     }
 
+    private void openBackupCamera() {
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.CAMERA}, CAMERA_REQUEST);
+            return;
+        }
+        startActivity(new Intent(this, BackupCameraActivity.class));
+    }
+
     private void showWeatherAlert() {
         if (weatherAlert == null || !weatherAlert.active()) return;
         String details = weatherAlert.headline;
@@ -310,6 +319,8 @@ public class MainActivity extends Activity implements LocationListener {
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
         if (requestCode == LOCATION_REQUEST && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) startGps();
+        if (requestCode == CAMERA_REQUEST && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED)
+            openBackupCamera();
         speedView.invalidate();
     }
     private void resetStats() { tripMeters = 0; maxMps = 0; saveStats(); speedView.invalidate(); }
@@ -786,6 +797,11 @@ public class MainActivity extends Activity implements LocationListener {
             c.drawRoundRect(customize, 14f * scale, 14f * scale, paint);
             text(c, editingDashboard ? "✓ DONE" : "⚙ CUSTOMIZE", cx, h * .939f, 12f * scale,
                     accentColor(), Paint.Align.CENTER, true);
+            paint.setColor(Color.argb(230, 5, 44, 43));
+            RectF backupCamera = new RectF(w * .025f, h * .91f, w * .245f, h * .952f);
+            c.drawRoundRect(backupCamera, 14f * scale, 14f * scale, paint);
+            text(c, "◀ BACKUP CAM", w * .135f, h * .939f, 12f * scale,
+                    Color.rgb(91, 255, 188), Paint.Align.CENTER, true);
             if (editingDashboard) drawEditorOverlay(c, scale);
         }
 
@@ -897,7 +913,12 @@ public class MainActivity extends Activity implements LocationListener {
             }
             if (e.getAction() == MotionEvent.ACTION_UP) {
                 float w = getWidth(), h = getHeight();
-                if (customizePressed && Math.hypot(e.getX() - downX, e.getY() - downY) < 40f) {
+                boolean backupPressed = !editingDashboard && downX >= w * .015f && downX <= w * .255f &&
+                        downY >= h * .90f && downY <= h * .96f &&
+                        e.getX() >= w * .015f && e.getX() <= w * .255f && e.getY() >= h * .90f && e.getY() <= h * .96f;
+                if (backupPressed) {
+                    openBackupCamera();
+                } else if (customizePressed && Math.hypot(e.getX() - downX, e.getY() - downY) < 40f) {
                     customizePressed = false;
                     if (editingDashboard) { editingDashboard = false; editingSection = 0; saveDashboard(); invalidate(); }
                     else showDashboardCustomizer();
