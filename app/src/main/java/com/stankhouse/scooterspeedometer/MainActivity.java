@@ -536,21 +536,30 @@ public class MainActivity extends Activity implements LocationListener {
         }
 
         private void showDasherSettings() {
-            boolean enabled = prefs.getBoolean("dasher_mode", false);
-            String[] choices = {enabled ? "✓ Dasher Mode enabled" : "Dasher Mode disabled",
-                    hasMediaAccess() ? "✓ Notification access granted" : "Grant notification access",
-                    "Open Dasher app"};
+            float density = getResources().getDisplayMetrics().density;
+            LinearLayout panel = new LinearLayout(MainActivity.this);
+            panel.setOrientation(LinearLayout.VERTICAL);
+            panel.setPadding(Math.round(20 * density), Math.round(10 * density), Math.round(20 * density), Math.round(8 * density));
+            panel.setBackgroundColor(Color.rgb(9, 12, 15));
+            Switch enabled = settingsSwitch("Enable Dasher Mode", prefs.getBoolean("dasher_mode", false));
+            panel.addView(enabled);
+            TextView permission = settingsAction("Notification access",
+                    hasMediaAccess() ? "Granted" : "Tap here to grant access");
+            panel.addView(permission);
+            TextView open = settingsAction("Open DoorDash Dasher", "Accept and manage deliveries securely");
+            panel.addView(open);
+            TextView privacy = settingsAction("Privacy", "Order notifications stay only on this phone");
+            privacy.setTextColor(Color.rgb(160, 185, 195)); panel.addView(privacy);
             new AlertDialog.Builder(MainActivity.this).setTitle("Delivery / Dasher mode")
-                    .setMessage("Displays DoorDash driver notifications locally on the dashboard. Order acceptance and private details stay in the Dasher app.")
-                    .setItems(choices, (dialog, which) -> {
-                        if (which == 0) {
-                            boolean next = !prefs.getBoolean("dasher_mode", false);
-                            prefs.edit().putBoolean("dasher_mode", next).apply();
-                            if (next && !hasMediaAccess()) openMediaAccessSettings();
-                            invalidate();
-                        } else if (which == 1) openMediaAccessSettings();
-                        else openDasherApp();
-                    }).setNegativeButton("Back", (dialog, which) -> showDashboardCustomizer()).show();
+                    .setView(panel).setPositiveButton("Done", null)
+                    .setNegativeButton("Back", (dialog, which) -> showDashboardCustomizer()).show();
+            enabled.setOnCheckedChangeListener((button, checked) -> {
+                prefs.edit().putBoolean("dasher_mode", checked).apply();
+                if (checked && !hasMediaAccess()) openMediaAccessSettings();
+                invalidate();
+            });
+            permission.setOnClickListener(v -> openMediaAccessSettings());
+            open.setOnClickListener(v -> openDasherApp());
         }
 
         private void openDasherApp() {
@@ -817,6 +826,7 @@ public class MainActivity extends Activity implements LocationListener {
             }
             c.drawRoundRect(panel, 18f * scale, 18f * scale, paint);
             paint.setShader(null);
+            if (weatherSkin == 0) drawSenseWeatherEffects(c, panel, scale);
             if (weatherSkin == 1 || weatherSkin == 3) {
                 paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth((weatherSkin == 1 ? 3f : 2f) * scale);
                 paint.setColor(accent); c.drawRoundRect(panel, 18f * scale, 18f * scale, paint); paint.setStyle(Paint.Style.FILL);
@@ -834,7 +844,8 @@ public class MainActivity extends Activity implements LocationListener {
                 text(c, "Loading…", left + pw * .085f, top + ph * .76f, 12f * scale * panelScale,
                         secondary, Paint.Align.LEFT, false);
             } else {
-                text(c, weatherData.icon(), left + pw * .09f, top + ph * .67f, 34f * scale * panelScale,
+                float iconBob = weatherSkin == 0 ? (float) Math.sin(SystemClock.uptimeMillis() / 620.0) * ph * .025f : 0f;
+                text(c, weatherData.icon(), left + pw * .09f, top + ph * .67f + iconBob, 34f * scale * panelScale,
                         weatherSkin == 3 ? accent : Color.rgb(255, 193, 7), Paint.Align.LEFT, true);
                 text(c, String.format(Locale.US, "%.0f°", weatherData.temperature), left + pw * .30f,
                         top + ph * .55f, 27f * scale * panelScale, primary, Paint.Align.LEFT, true);
@@ -846,6 +857,10 @@ public class MainActivity extends Activity implements LocationListener {
                 text(c, String.format(Locale.US, "%s %.0f mph", weatherData.windCompass(), weatherData.windSpeed),
                         left + pw * .68f, top + ph * .78f, 11f * scale * panelScale,
                         secondary, Paint.Align.LEFT, false);
+                long ageMinutes = Math.max(0, (System.currentTimeMillis() - weatherData.updatedAt) / 60000L);
+                text(c, (ageMinutes < 2 ? "LIVE" : ageMinutes + "m ago") + " • OPEN-METEO",
+                        panel.right - pw * .04f, panel.bottom - ph * .06f, 7f * scale * panelScale,
+                        secondary, Paint.Align.RIGHT, true);
             }
             paint.setColor(accent);
             paint.setStrokeWidth(Math.max(2f, 2f * scale));
@@ -856,6 +871,57 @@ public class MainActivity extends Activity implements LocationListener {
             c.drawLine(panel.left, panel.bottom - grip, panel.left + grip, panel.bottom, paint);
             c.drawLine(panel.right - grip, panel.bottom, panel.right, panel.bottom - grip, paint);
             paint.setStyle(Paint.Style.FILL);
+        }
+
+        private void drawSenseWeatherEffects(Canvas c, RectF panel, float scale) {
+            if (weatherData == null) return;
+            long now = SystemClock.uptimeMillis();
+            int code = weatherData.weatherCode;
+            boolean thunder = code >= 95;
+            boolean snow = (code >= 71 && code <= 77) || (code >= 85 && code <= 86);
+            boolean rain = (code >= 51 && code <= 67) || (code >= 80 && code <= 82);
+            boolean cloud = code >= 1 && code <= 3 || rain || thunder;
+            int save = c.save(); Path weatherClip = new Path();
+            weatherClip.addRoundRect(panel, 18f * scale, 18f * scale, Path.Direction.CW); c.clipPath(weatherClip);
+            float pw = panel.width(), ph = panel.height();
+            if (code == 0) {
+                float pulse = 1f + .09f * (float) Math.sin(now / 700.0);
+                for (int i = 4; i >= 1; i--) {
+                    paint.setColor(Color.argb(9 + i * 6, 255, 210, 70));
+                    c.drawCircle(panel.left + pw * .14f, panel.centerY(), ph * (.14f + i * .09f) * pulse, paint);
+                }
+            }
+            if (cloud) {
+                paint.setColor(Color.argb(rain || thunder ? 40 : 25, 225, 239, 246));
+                for (int i = 0; i < 4; i++) {
+                    float x = panel.left - pw * .15f + (float) ((i * pw * .34f + now / (18f + i * 4f)) % (pw * 1.3f));
+                    float y = panel.top + ph * (.25f + (i % 2) * .24f);
+                    c.drawCircle(x, y, ph * .18f, paint); c.drawCircle(x + ph * .15f, y, ph * .14f, paint);
+                }
+            }
+            if (rain || thunder) {
+                paint.setStrokeWidth(Math.max(1.5f, scale)); paint.setColor(Color.argb(125, 115, 210, 255));
+                for (int i = 0; i < 18; i++) {
+                    float x = panel.left + (float) ((i * 47L + now / 9L) % Math.max(1L, (long) pw));
+                    float y = panel.top + (float) ((i * 31L + now / 5L) % Math.max(1L, (long) ph));
+                    c.drawLine(x, y, x - ph * .035f, y + ph * .18f, paint);
+                }
+            } else if (snow) {
+                paint.setColor(Color.argb(175, 250, 252, 255));
+                for (int i = 0; i < 15; i++) {
+                    float x = panel.left + (float) ((i * 61L + now / (20L + i % 4)) % Math.max(1L, (long) pw));
+                    float y = panel.top + (float) ((i * 37L + now / (12L + i % 3)) % Math.max(1L, (long) ph));
+                    c.drawCircle(x, y, Math.max(1.5f, scale * (1f + i % 3)), paint);
+                }
+            }
+            if (thunder && now % 5200L < 130L) {
+                paint.setColor(Color.argb(105, 225, 238, 255)); c.drawRect(panel, paint);
+            }
+            paint.setShader(new LinearGradient(panel.left, panel.top, panel.right, panel.bottom,
+                    Color.argb(42, 255, 255, 255), Color.argb(4, 255, 255, 255), Shader.TileMode.CLAMP));
+            c.drawRoundRect(new RectF(panel.left, panel.top, panel.right, panel.top + ph * .38f), 18f * scale, 18f * scale, paint);
+            paint.setShader(null); c.restoreToCount(save);
+            postInvalidateDelayed(70L);
         }
 
         private void drawWeatherAtmosphere(Canvas c, float w, float h) {
