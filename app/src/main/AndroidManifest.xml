@@ -16,15 +16,16 @@
         android:icon="@drawable/ic_launcher"
         android:label="Scooter Speedometer"
         android:theme="@style/AppTheme">
-        <activity
-            android:name=".MainActivity"
-            android:screenOrientation="sensor"
-            android:exported="true">
+        <activity android:name=".SplashActivity" android:screenOrientation="sensor" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".MainActivity"
+            android:screenOrientation="sensor"
+            android:exported="false" />
         <activity
             android:name=".BuiltInNavigationActivity"
             android:screenOrientation="sensor"
