@@ -72,6 +72,8 @@ public class RiderLinkClient {
         try { rest("POST", "/rest/v1/rpc/nearby_sos", new JSONObject().put("p_lat", lat).put("p_lon", lon).put("p_radius_km", 40).toString(), "return=representation", callback); }
         catch (Exception e) { callback.complete(false, e.getMessage(), "[]"); }
     }
+    public void reportCommunityHazard(String type,double lat,double lon,Callback c){try{rest("POST","/rest/v1/community_hazards",new JSONObject().put("reporter_id",userId()).put("type",type).put("latitude",lat).put("longitude",lon).toString(),"return=minimal",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    public void nearbyCommunityHazards(double lat,double lon,Callback c){try{rest("POST","/rest/v1/rpc/nearby_community_hazards",new JSONObject().put("p_lat",lat).put("p_lon",lon).put("p_radius_km",50).toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"[]");}}
     public void sendSos(double lat, double lon, String note, Callback callback) {
         try { rest("POST", "/rest/v1/sos_alerts", new JSONObject().put("user_id", userId()).put("latitude", lat)
                 .put("longitude", lon).put("message", note).put("active", true).toString(), "return=representation", callback); }
