@@ -38,6 +38,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
 
@@ -361,6 +362,7 @@ public class MainActivity extends Activity implements LocationListener {
         int pad = Math.round(20 * density), rowPad = Math.round(12 * density);
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(pad, Math.round(8 * density), pad, Math.round(4 * density));
+        panel.setBackgroundColor(Color.rgb(9, 12, 15));
 
         TextView nightHeading = settingsHeading("NIGHT DISPLAY"); panel.addView(nightHeading);
         Switch automatic = settingsSwitch("Automatic sunset + light sensor", nightMode.enabled());
@@ -388,7 +390,9 @@ public class MainActivity extends Activity implements LocationListener {
                 .setPositiveButton("Clear", (d, w) -> { roadAwareness.clearHazards(); clear.setText("Clear saved hazards\n0 currently saved"); })
                 .setNegativeButton("Cancel", null).show());
 
-        new AlertDialog.Builder(this).setTitle("Night & road awareness").setView(panel)
+        ScrollView scroller = new ScrollView(this); scroller.setFillViewport(true); scroller.setBackgroundColor(Color.rgb(9, 12, 15));
+        scroller.addView(panel);
+        new AlertDialog.Builder(this).setTitle("Night & road awareness").setView(scroller)
                 .setPositiveButton("Done", null).show();
     }
 
@@ -442,6 +446,7 @@ public class MainActivity extends Activity implements LocationListener {
         private float editStartX, editStartY;
         private final RectF editStartRect = new RectF();
         private boolean customizePressed;
+        private int dashboardTheme = prefs.getInt("dashboard_theme", 0);
         SpeedView(Context context) {
             super(context);
             setBackgroundColor(Color.rgb(4, 8, 12));
@@ -467,6 +472,7 @@ public class MainActivity extends Activity implements LocationListener {
 
         private int accentColor() {
             if (nightMode != null && nightMode.isNight()) return Color.rgb(255, 128, 24);
+            if (dashboardTheme == 1) return Color.rgb(255, 63, 24);
             int[] colors = {Color.rgb(0,229,255), Color.rgb(105,255,120),
                     Color.rgb(255,174,0), Color.rgb(190,90,255), Color.rgb(255,65,90)};
             return colors[Math.max(0, Math.min(colors.length - 1, dashboardLayout.gaugeColor))];
@@ -533,19 +539,25 @@ public class MainActivity extends Activity implements LocationListener {
         }
 
         private void showAppearanceMenu() {
-            String[] choices = {"Album-art transparency", "Gauge color", "Gauge style", "Weather widget skin"};
+            String[] choices = {"Dashboard theme", "Album-art transparency", "Gauge color", "Gauge style", "Weather widget skin"};
             new AlertDialog.Builder(MainActivity.this).setTitle("Appearance & media").setItems(choices, (dialog, which) -> {
                 if (which == 0) {
+                    String[] themes = {"Classic dashboard", "Inferno tuner"};
+                    new AlertDialog.Builder(MainActivity.this).setTitle("Dashboard theme")
+                            .setSingleChoiceItems(themes, dashboardTheme, (d, item) -> {
+                                dashboardTheme = item; prefs.edit().putInt("dashboard_theme", item).apply(); invalidate(); d.dismiss();
+                            }).show();
+                } else if (which == 1) {
                     String[] levels = {"Subtle · 25%", "Balanced · 45%", "Bold · 65%", "Maximum · 85%"};
                     new AlertDialog.Builder(MainActivity.this).setTitle("Album-art background")
                             .setSingleChoiceItems(levels, Math.max(0, Math.min(3, (dashboardLayout.albumAlpha - 50) / 50)),
                                     (d, item) -> { dashboardLayout.albumAlpha = new int[]{64,115,166,217}[item]; saveDashboard(); invalidate(); d.dismiss(); }).show();
-                } else if (which == 1) {
+                } else if (which == 2) {
                     String[] colors = {"Cyan", "Lime", "Amber", "Purple", "Red"};
                     new AlertDialog.Builder(MainActivity.this).setTitle("Gauge color")
                             .setSingleChoiceItems(colors, dashboardLayout.gaugeColor,
                                     (d, item) -> { dashboardLayout.gaugeColor = item; saveDashboard(); invalidate(); d.dismiss(); }).show();
-                } else if (which == 2) {
+                } else if (which == 3) {
                     String[] styles = {"Classic arc", "Dual arc", "Minimal"};
                     new AlertDialog.Builder(MainActivity.this).setTitle("Gauge style")
                             .setSingleChoiceItems(styles, dashboardLayout.gaugeStyle,
@@ -570,6 +582,61 @@ public class MainActivity extends Activity implements LocationListener {
         private String ellipsize(String value, int max) {
             if (TextUtils.isEmpty(value)) return "";
             return value.length() <= max ? value : value.substring(0, Math.max(1, max - 1)) + "…";
+        }
+
+        private void drawInfernoBackground(Canvas c, float w, float h, float scale) {
+            paint.setStyle(Paint.Style.FILL);
+            paint.setShader(new LinearGradient(0, 0, w, h,
+                    Color.rgb(3, 3, 4), Color.rgb(35, 3, 1), Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, w, h, paint); paint.setShader(null);
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(Math.max(1f, scale));
+            paint.setColor(Color.argb(32, 255, 80, 28));
+            float gap = 28f * scale;
+            for (float x = -h; x < w; x += gap) c.drawLine(x, 0, x + h, h, paint);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setShader(new LinearGradient(0, 0, w, 0,
+                    Color.argb(235, 20, 20, 22), Color.argb(235, 92, 12, 2), Shader.TileMode.CLAMP));
+            c.drawRect(0, 0, w, h * .025f, paint); paint.setShader(null);
+            text(c, "STANKHOUSE  //  INFERNO PERFORMANCE", w * .5f, h * .019f,
+                    10f * scale, Color.rgb(255, 145, 72), Paint.Align.CENTER, true);
+        }
+
+        private void drawInfernoGauge(Canvas c, float w, float h, float cx, float radius, float shown, float limit, float scale) {
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeCap(Paint.Cap.BUTT);
+            paint.setStrokeWidth(3f * scale); paint.setColor(Color.rgb(126, 128, 132));
+            RectF outer = new RectF(cx - radius - 11f * scale, h * .49f - radius - 11f * scale,
+                    cx + radius + 11f * scale, h * .49f + radius + 11f * scale);
+            c.drawArc(outer, 140, 260, false, paint);
+            paint.setStrokeWidth(8f * scale);
+            paint.setShader(new LinearGradient(outer.left, outer.top, outer.right, outer.bottom,
+                    Color.rgb(255, 184, 70), Color.rgb(165, 8, 0), Shader.TileMode.CLAMP));
+            c.drawArc(outer, 145, Math.min(shown / limit, 1f) * 250f, false, paint); paint.setShader(null);
+            paint.setStrokeWidth(2f * scale);
+            for (int i = 0; i <= 20; i++) {
+                double angle = Math.toRadians(145 + i * 12.5);
+                float r1 = radius - (i % 5 == 0 ? 16f : 9f) * scale;
+                float r2 = radius + 2f * scale;
+                float centerY = h * .49f;
+                paint.setColor(i >= 16 ? Color.rgb(255, 48, 25) : Color.rgb(210, 214, 216));
+                c.drawLine(cx + (float) Math.cos(angle) * r1, centerY + (float) Math.sin(angle) * r1,
+                        cx + (float) Math.cos(angle) * r2, centerY + (float) Math.sin(angle) * r2, paint);
+            }
+            double needleAngle = Math.toRadians(145 + Math.min(shown / limit, 1f) * 250f);
+            float centerY = h * .49f;
+            paint.setStrokeCap(Paint.Cap.ROUND); paint.setStrokeWidth(5f * scale); paint.setColor(Color.rgb(255, 55, 24));
+            paint.setShadowLayer(9f * scale, 0, 0, Color.rgb(255, 60, 18));
+            c.drawLine(cx, centerY, cx + (float) Math.cos(needleAngle) * radius * .72f,
+                    centerY + (float) Math.sin(needleAngle) * radius * .72f, paint);
+            paint.clearShadowLayer(); paint.setStyle(Paint.Style.FILL); paint.setColor(Color.rgb(190, 194, 197));
+            c.drawCircle(cx, centerY, 11f * scale, paint); paint.setColor(Color.rgb(35, 2, 0)); c.drawCircle(cx, centerY, 6f * scale, paint);
+        }
+
+        private void drawInfernoFrames(Canvas c, float scale) {
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(2f * scale); paint.setColor(Color.argb(190, 255, 67, 24));
+            c.drawRoundRect(mediaSlot, 18f * scale, 18f * scale, paint);
+            c.drawRoundRect(weatherPanelRect, 12f * scale, 12f * scale, paint);
+            c.drawRoundRect(navigationSlot, 12f * scale, 12f * scale, paint);
+            paint.setStyle(Paint.Style.FILL);
         }
         private Bitmap albumArt() {
             if (mediaMetadata == null) return null;
@@ -617,11 +684,15 @@ public class MainActivity extends Activity implements LocationListener {
         private void drawMediaPanel(Canvas c, float w, float h, float scale) {
             float top = h * .025f, bottom = h * .245f;
             RectF panel = new RectF(w * .035f, top, w * .965f, bottom);
-            paint.setStyle(Paint.Style.FILL); paint.setColor(Color.argb(205, 4, 10, 14));
+            paint.setStyle(Paint.Style.FILL); paint.setColor(dashboardTheme == 1 ? Color.argb(235, 16, 5, 4) : Color.argb(205, 4, 10, 14));
             c.drawRoundRect(panel, 24f * scale, 24f * scale, paint);
+            if (dashboardTheme == 1) {
+                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(2f * scale); paint.setColor(Color.rgb(180, 40, 18));
+                c.drawRoundRect(panel, 24f * scale, 24f * scale, paint); paint.setStyle(Paint.Style.FILL);
+            }
             if (!hasMediaAccess()) {
                 text(c, "♫  ENABLE MUSIC CONTROLS", w * .5f, h * .115f, 21f * scale,
-                        Color.rgb(0, 229, 255), Paint.Align.CENTER, true);
+                        accentColor(), Paint.Align.CENTER, true);
                 text(c, "Tap here, then allow Scooter Speedometer", w * .5f, h * .165f,
                         13f * scale, Color.rgb(190, 205, 212), Paint.Align.CENTER, false);
                 return;
@@ -641,7 +712,7 @@ public class MainActivity extends Activity implements LocationListener {
             else {
                 paint.setColor(Color.rgb(20, 39, 49)); c.drawRoundRect(artRect, 12f * scale, 12f * scale, paint);
                 text(c, "♫", artRect.centerX(), artRect.centerY() + 15f * scale, 42f * scale,
-                        Color.rgb(0, 229, 255), Paint.Align.CENTER, true);
+                        accentColor(), Paint.Align.CENTER, true);
             }
             String title = metadataText(MediaMetadata.METADATA_KEY_TITLE, MediaMetadata.METADATA_KEY_DISPLAY_TITLE);
             String artist = metadataText(MediaMetadata.METADATA_KEY_ARTIST, MediaMetadata.METADATA_KEY_DISPLAY_SUBTITLE);
@@ -652,7 +723,7 @@ public class MainActivity extends Activity implements LocationListener {
             float buttonY = bottom - 34f * scale;
             text(c, "|◀", w * .53f, buttonY, 23f * scale, Color.WHITE, Paint.Align.CENTER, true);
             text(c, isPlaying() ? "Ⅱ" : "▶", w * .64f, buttonY, 29f * scale,
-                    Color.rgb(0, 229, 255), Paint.Align.CENTER, true);
+                    accentColor(), Paint.Align.CENTER, true);
             text(c, "▶|", w * .75f, buttonY, 23f * scale, Color.WHITE, Paint.Align.CENTER, true);
             text(c, "−", w * .86f, buttonY, 28f * scale, Color.WHITE, Paint.Align.CENTER, true);
             text(c, "+", w * .95f, buttonY, 27f * scale, Color.WHITE, Paint.Align.CENTER, true);
@@ -676,7 +747,11 @@ public class MainActivity extends Activity implements LocationListener {
             int primary = weatherSkin == 3 ? Color.rgb(255, 218, 130) : Color.WHITE;
             int secondary = weatherSkin == 2 ? Color.rgb(220, 230, 235) :
                     weatherSkin == 3 ? Color.rgb(255, 190, 70) : Color.rgb(184, 204, 214);
-            if (weatherSkin == 0) {
+            if (dashboardTheme == 1) {
+                accent = Color.rgb(255, 83, 28); primary = Color.rgb(255, 238, 220); secondary = Color.rgb(222, 152, 122);
+                paint.setShader(new LinearGradient(panel.left, panel.top, panel.right, panel.bottom,
+                        Color.argb(242, 48, 9, 3), Color.argb(230, 7, 5, 5), Shader.TileMode.CLAMP));
+            } else if (weatherSkin == 0) {
                 paint.setShader(new LinearGradient(panel.left, panel.top, panel.right, panel.bottom,
                         Color.argb(232, 12, 34, 45), Color.argb(205, 1, 8, 13), Shader.TileMode.CLAMP));
             } else if (weatherSkin == 1) paint.setColor(Color.argb(225, 0, 12, 18));
@@ -847,6 +922,7 @@ public class MainActivity extends Activity implements LocationListener {
             super.onDraw(c);
             float w = getWidth(), h = getHeight(), cx = w / 2f;
             float scale = Math.min(w, h) / 500f;
+            if (dashboardTheme == 1) drawInfernoBackground(c, w, h, scale);
             drawWeatherAtmosphere(c, w, h);
             Bitmap art = albumArt();
             if (art != null && mediaController != null) {
@@ -861,6 +937,11 @@ public class MainActivity extends Activity implements LocationListener {
                     c.drawRect(background, paint); paint.setShader(null);
                 }
                 paint.setColor(Color.argb(150, 0, 5, 8)); c.drawRect(0, 0, w, h, paint);
+            }
+            if (dashboardTheme == 1) {
+                paint.setShader(new LinearGradient(0, 0, w, h, Color.argb(30, 255, 72, 20),
+                        Color.argb(115, 20, 0, 0), Shader.TileMode.CLAMP));
+                c.drawRect(0, 0, w, h, paint); paint.setShader(null);
             }
             if (nightMode.isNight()) {
                 int darkness = nightMode.oled() ? 205 : 145;
@@ -888,6 +969,7 @@ public class MainActivity extends Activity implements LocationListener {
             int gaugeSave = beginTransform(c, gaugeSlot, baseGauge);
             float radius = Math.min(w * .38f, h * .245f);
             arc.set(cx - radius, h * .49f - radius, cx + radius, h * .49f + radius);
+            if (dashboardTheme == 1) drawInfernoGauge(c, w, h, cx, radius, shown, metric ? 130f : 80f, scale);
             paint.setStyle(Paint.Style.STROKE); paint.setStrokeCap(Paint.Cap.ROUND);
             paint.setStrokeWidth(dashboardLayout.gaugeStyle == 2 ? 5f * scale : 15f * scale);
             paint.setColor(Color.rgb(27, 42, 51));
@@ -945,6 +1027,7 @@ public class MainActivity extends Activity implements LocationListener {
             text(c, "◀ BACKUP CAM", w * .135f, h * .939f, 12f * scale,
                     Color.rgb(91, 255, 188), Paint.Align.CENTER, true);
             drawRoadAwareness(c, w, h, scale, shownMph);
+            if (dashboardTheme == 1) drawInfernoFrames(c, scale);
             if (editingDashboard) drawEditorOverlay(c, scale);
         }
 
