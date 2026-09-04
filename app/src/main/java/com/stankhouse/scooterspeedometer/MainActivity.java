@@ -66,6 +66,10 @@ public class MainActivity extends Activity implements LocationListener {
     private WeatherRepository.AlertData weatherAlert;
     private WeatherVoiceManager weatherVoice;
     private long lastWeatherRequest;
+    private AutoNightController nightMode;
+    private RoadAwarenessManager roadAwareness;
+    private String roadAlert = "";
+    private long roadAlertUntil;
 
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
         @Override public void onMetadataChanged(MediaMetadata metadata) { mediaMetadata = metadata; speedView.invalidate(); }
@@ -87,6 +91,14 @@ public class MainActivity extends Activity implements LocationListener {
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
         weatherRepository = new WeatherRepository(this);
         weatherVoice = new WeatherVoiceManager(this);
+        nightMode = new AutoNightController(this, () -> { if (speedView != null) speedView.invalidate(); });
+        roadAwareness = new RoadAwarenessManager(this, new RoadAwarenessManager.Callback() {
+            @Override public void onRoadDataChanged() { if (speedView != null) speedView.invalidate(); }
+            @Override public void onHazard(String message) {
+                roadAlert = message; roadAlertUntil = SystemClock.elapsedRealtime() + 7000L;
+                if (speedView != null) speedView.invalidate();
+            }
+        });
         weatherData = weatherRepository.cached();
         weatherAlert = weatherRepository.cachedAlert();
         speedView = new SpeedView(this);
@@ -114,6 +126,7 @@ public class MainActivity extends Activity implements LocationListener {
     @Override protected void onResume() {
         super.onResume();
         enterImmersive();
+        nightMode.start();
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) startGps();
         refreshMedia();
         if (navigationPermissionPending && Settings.canDrawOverlays(this)) {
@@ -121,7 +134,7 @@ public class MainActivity extends Activity implements LocationListener {
             speedView.post(this::showDestinationDialog);
         }
     }
-    @Override protected void onPause() { super.onPause(); stopGps(); stopMediaListener(); saveStats(); }
+    @Override protected void onPause() { super.onPause(); nightMode.stop(); stopGps(); stopMediaListener(); saveStats(); }
 
     private void startGps() {
         try {
@@ -298,6 +311,8 @@ public class MainActivity extends Activity implements LocationListener {
             if (distance < 120f && dt < 15000L && (raw > 0.7f || distance > 4f)) tripMeters += distance;
         }
         lastGoodLocation = location;
+        nightMode.updateLocation(location.getLatitude(), location.getLongitude());
+        roadAwareness.update(location, smoothedMps);
         if (SystemClock.elapsedRealtime() - lastWeatherRequest > 60000L) {
             lastWeatherRequest = SystemClock.elapsedRealtime();
             weatherRepository.update(location.getLatitude(), location.getLongitude(), data -> {
@@ -325,8 +340,45 @@ public class MainActivity extends Activity implements LocationListener {
     }
     private void resetStats() { tripMeters = 0; maxMps = 0; saveStats(); speedView.invalidate(); }
     private void saveStats() { prefs.edit().putFloat("trip", (float) tripMeters).putFloat("max", maxMps).apply(); }
+
+    private void showHazardPicker() {
+        if (lastGoodLocation == null || SystemClock.elapsedRealtime() - lastFixElapsed > 5000L) {
+            new AlertDialog.Builder(this).setTitle("GPS fix required")
+                    .setMessage("Wait for GPS LOCK before marking a road hazard.").setPositiveButton("OK", null).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Report a hazard here")
+                .setItems(RoadAwarenessManager.HAZARD_TYPES, (dialog, which) ->
+                        roadAwareness.addHazard(RoadAwarenessManager.HAZARD_TYPES[which], lastGoodLocation))
+                .setNeutralButton("Manage", (dialog, which) -> showRoadSettings()).setNegativeButton("Cancel", null).show();
+    }
+
+    private void showRoadSettings() {
+        String voice = roadAwareness.voiceEnabled() ? "On" : "Off";
+        String night = nightMode.enabled() ? "On" : "Off";
+        String oled = nightMode.oled() ? "On" : "Off";
+        String[] choices = {"Automatic night mode · " + night, "Extra-dark OLED · " + oled,
+                "Speed warning voice · " + voice, "Warning threshold · +" + roadAwareness.thresholdMph() + " mph",
+                "Clear " + roadAwareness.hazardCount() + " saved hazards"};
+        new AlertDialog.Builder(this).setTitle("Night & road awareness")
+                .setItems(choices, (dialog, which) -> {
+                    if (which == 0) { nightMode.setEnabled(!nightMode.enabled()); speedView.invalidate(); }
+                    else if (which == 1) { nightMode.setOled(!nightMode.oled()); speedView.invalidate(); }
+                    else if (which == 2) roadAwareness.setVoiceEnabled(!roadAwareness.voiceEnabled());
+                    else if (which == 3) {
+                        String[] levels = {"At the limit", "+3 mph", "+5 mph", "+10 mph"};
+                        int[] values = {0, 3, 5, 10};
+                        new AlertDialog.Builder(this).setTitle("Spoken warning threshold")
+                                .setItems(levels, (d, item) -> roadAwareness.setThresholdMph(values[item])).show();
+                    } else new AlertDialog.Builder(this).setTitle("Clear saved hazards?")
+                            .setMessage("This removes every locally saved hazard marker.")
+                            .setPositiveButton("Clear", (d, w) -> roadAwareness.clearHazards())
+                            .setNegativeButton("Cancel", null).show();
+                }).show();
+    }
     @Override protected void onDestroy() {
         if (weatherVoice != null) weatherVoice.shutdown();
+        if (roadAwareness != null) roadAwareness.shutdown();
         super.onDestroy();
     }
 
@@ -381,6 +433,7 @@ public class MainActivity extends Activity implements LocationListener {
         }
 
         private int accentColor() {
+            if (nightMode != null && nightMode.isNight()) return Color.rgb(255, 128, 24);
             int[] colors = {Color.rgb(0,229,255), Color.rgb(105,255,120),
                     Color.rgb(255,174,0), Color.rgb(190,90,255), Color.rgb(255,65,90)};
             return colors[Math.max(0, Math.min(colors.length - 1, dashboardLayout.gaugeColor))];
@@ -429,7 +482,7 @@ public class MainActivity extends Activity implements LocationListener {
             String[] choices = {editingDashboard ? "Finish editing" : "Drag & resize sections",
                     "Full portrait preset", "Compact portrait preset", "Full landscape preset",
                     "Compact landscape preset", "Album-art transparency", "Gauge color",
-                    "Gauge style", "Save layout", "Load layout"};
+                    "Gauge style", "Save layout", "Load layout", "Night & road settings"};
             new AlertDialog.Builder(MainActivity.this).setTitle("Customize dashboard")
                     .setItems(choices, (dialog, which) -> {
                         if (which == 0) { editingDashboard = !editingDashboard; editingSection = 0; invalidate(); }
@@ -451,6 +504,7 @@ public class MainActivity extends Activity implements LocationListener {
                                             (d, item) -> { dashboardLayout.gaugeStyle = item; saveDashboard(); invalidate(); d.dismiss(); }).show();
                         } else if (which == 8) showProfilePicker(true);
                         else if (which == 9) showProfilePicker(false);
+                        else if (which == 10) showRoadSettings();
                     }).show();
         }
 
@@ -710,6 +764,32 @@ public class MainActivity extends Activity implements LocationListener {
                     10f * scale, Color.rgb(255, 232, 225), Paint.Align.LEFT, false);
         }
 
+        private void drawRoadAwareness(Canvas c, float w, float h, float scale, float shownMph) {
+            double limit = roadAwareness.limitMph();
+            if (limit > 0) {
+                float x = w * .84f, y = h * .59f, radius = Math.min(w, h) * .057f;
+                paint.setStyle(Paint.Style.FILL); paint.setColor(Color.WHITE); c.drawCircle(x, y, radius, paint);
+                paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(5f * scale); paint.setColor(Color.rgb(220, 40, 32));
+                c.drawCircle(x, y, radius - 2f * scale, paint);
+                text(c, String.valueOf(Math.round(limit)), x, y + 10f * scale, 28f * scale,
+                        Color.rgb(20, 20, 20), Paint.Align.CENTER, true);
+                text(c, ellipsize(roadAwareness.roadName(), 18), x, y + radius + 18f * scale,
+                        10f * scale, nightMode.isNight() ? Color.rgb(255, 164, 74) : Color.rgb(180, 202, 211), Paint.Align.CENTER, false);
+            }
+            paint.setStyle(Paint.Style.FILL); paint.setColor(nightMode.isNight() ? Color.argb(240, 48, 12, 4) : Color.argb(230, 55, 22, 10));
+            RectF hazard = new RectF(w * .755f, h * .91f, w * .975f, h * .952f);
+            c.drawRoundRect(hazard, 14f * scale, 14f * scale, paint);
+            text(c, "⚠ MARK HAZARD", w * .865f, h * .939f, 11f * scale,
+                    Color.rgb(255, 174, 55), Paint.Align.CENTER, true);
+            if (!roadAlert.isEmpty() && SystemClock.elapsedRealtime() < roadAlertUntil) {
+                RectF banner = new RectF(w * .17f, h * .79f, w * .83f, h * .855f);
+                paint.setColor(Color.argb(238, 80, 26, 3)); c.drawRoundRect(banner, 16f * scale, 16f * scale, paint);
+                text(c, "⚠  " + roadAlert.toUpperCase(Locale.US), w * .5f, h * .832f,
+                        14f * scale, Color.rgb(255, 192, 62), Paint.Align.CENTER, true);
+                postInvalidateDelayed(250L);
+            }
+        }
+
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
             float w = getWidth(), h = getHeight(), cx = w / 2f;
@@ -718,7 +798,8 @@ public class MainActivity extends Activity implements LocationListener {
             Bitmap art = albumArt();
             if (art != null && mediaController != null) {
                 RectF background = new RectF(0, 0, w, h);
-                drawAnimatedCover(c, art, background, dashboardLayout.albumAlpha, .085f);
+                int artAlpha = nightMode.isNight() ? Math.max(18, dashboardLayout.albumAlpha / 3) : dashboardLayout.albumAlpha;
+                drawAnimatedCover(c, art, background, artAlpha, .085f);
                 if (isPlaying()) {
                     double glowTime = SystemClock.uptimeMillis() / 1000.0;
                     int glowAlpha = 18 + Math.round(12f * (1f + (float) Math.sin(glowTime * 1.6)) / 2f);
@@ -727,6 +808,10 @@ public class MainActivity extends Activity implements LocationListener {
                     c.drawRect(background, paint); paint.setShader(null);
                 }
                 paint.setColor(Color.argb(150, 0, 5, 8)); c.drawRect(0, 0, w, h, paint);
+            }
+            if (nightMode.isNight()) {
+                int darkness = nightMode.oled() ? 205 : 145;
+                paint.setColor(Color.argb(darkness, 0, 0, 0)); c.drawRect(0, 0, w, h, paint);
             }
             if (isPlaying() && art != null) postInvalidateDelayed(33L);
             slot(dashboardLayout.media, w, h, mediaSlot);
@@ -743,6 +828,7 @@ public class MainActivity extends Activity implements LocationListener {
             boolean gpsOn = false;
             try { gpsOn = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER); } catch (Exception ignored) { }
             float shown = smoothedMps * (metric ? 3.6f : 2.2369363f);
+            float shownMph = smoothedMps * 2.2369363f;
             float maxShown = maxMps * (metric ? 3.6f : 2.2369363f);
             double tripShown = tripMeters / (metric ? 1000.0 : 1609.344);
             RectF baseGauge = new RectF(w * .10f, h * .38f, w * .90f, h * .72f);
@@ -754,7 +840,10 @@ public class MainActivity extends Activity implements LocationListener {
             paint.setColor(Color.rgb(27, 42, 51));
             if (dashboardLayout.gaugeStyle != 2) c.drawArc(arc, 145, 250, false, paint);
             float limit = metric ? 130f : 80f;
-            paint.setColor(shown > limit * .82f ? Color.rgb(255, 179, 0) : accentColor());
+            double roadLimit = roadAwareness.limitMph();
+            int speedColor = roadLimit > 0 && shownMph >= roadLimit + roadAwareness.thresholdMph() ? Color.rgb(255, 55, 42) :
+                    roadLimit > 0 && shownMph >= roadLimit ? Color.rgb(255, 179, 0) : accentColor();
+            paint.setColor(speedColor);
             c.drawArc(arc, 145, Math.min(shown / limit, 1f) * 250f, false, paint);
             if (dashboardLayout.gaugeStyle == 1) {
                 paint.setStrokeWidth(4f * scale); paint.setColor(Color.argb(130, Color.red(accentColor()), Color.green(accentColor()), Color.blue(accentColor())));
@@ -802,6 +891,7 @@ public class MainActivity extends Activity implements LocationListener {
             c.drawRoundRect(backupCamera, 14f * scale, 14f * scale, paint);
             text(c, "◀ BACKUP CAM", w * .135f, h * .939f, 12f * scale,
                     Color.rgb(91, 255, 188), Paint.Align.CENTER, true);
+            drawRoadAwareness(c, w, h, scale, shownMph);
             if (editingDashboard) drawEditorOverlay(c, scale);
         }
 
@@ -916,7 +1006,12 @@ public class MainActivity extends Activity implements LocationListener {
                 boolean backupPressed = !editingDashboard && downX >= w * .015f && downX <= w * .255f &&
                         downY >= h * .90f && downY <= h * .96f &&
                         e.getX() >= w * .015f && e.getX() <= w * .255f && e.getY() >= h * .90f && e.getY() <= h * .96f;
-                if (backupPressed) {
+                boolean hazardPressed = !editingDashboard && downX >= w * .745f && downX <= w * .985f &&
+                        downY >= h * .90f && downY <= h * .96f &&
+                        e.getX() >= w * .745f && e.getX() <= w * .985f && e.getY() >= h * .90f && e.getY() <= h * .96f;
+                if (hazardPressed) {
+                    showHazardPicker();
+                } else if (backupPressed) {
                     openBackupCamera();
                 } else if (customizePressed && Math.hypot(e.getX() - downX, e.getY() - downY) < 40f) {
                     customizePressed = false;
