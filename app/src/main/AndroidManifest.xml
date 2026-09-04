@@ -9,7 +9,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.location.gps" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -28,6 +30,10 @@
             android:exported="false" />
         <activity
             android:name=".BuiltInNavigationActivity"
+            android:screenOrientation="sensor"
+            android:exported="false" />
+        <activity
+            android:name=".BackupCameraActivity"
             android:screenOrientation="sensor"
             android:exported="false" />
         <service
