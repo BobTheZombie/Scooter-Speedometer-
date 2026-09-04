@@ -351,10 +351,12 @@ public class MainActivity extends Activity implements LocationListener {
                     .setMessage("Wait for GPS LOCK before marking a road hazard.").setPositiveButton("OK", null).show();
             return;
         }
+        String[] hazardTypes = java.util.Arrays.copyOf(RoadAwarenessManager.HAZARD_TYPES, RoadAwarenessManager.HAZARD_TYPES.length + 1);
+        hazardTypes[hazardTypes.length - 1] = "Flock / license-plate camera";
         new AlertDialog.Builder(this).setTitle("Report a hazard here")
-                .setItems(RoadAwarenessManager.HAZARD_TYPES, (dialog, which) -> {
-                    String type=RoadAwarenessManager.HAZARD_TYPES[which];roadAwareness.addHazard(type,lastGoodLocation);
-                    if(which==RoadAwarenessManager.HAZARD_TYPES.length-1){RiderLinkClient link=new RiderLinkClient(this);if(link.signedIn())link.reportCommunityHazard("flock_camera",lastGoodLocation.getLatitude(),lastGoodLocation.getLongitude(),(ok,msg,body)->{android.widget.Toast.makeText(this,ok?"Flock camera shared on RiderLink":"Saved locally • RiderLink share failed: "+msg,android.widget.Toast.LENGTH_LONG).show();link.shutdown();});else{android.widget.Toast.makeText(this,"Saved locally • sign into RiderLink to share it on the live map",android.widget.Toast.LENGTH_LONG).show();link.shutdown();}}
+                .setItems(hazardTypes, (dialog, which) -> {
+                    String type=hazardTypes[which];roadAwareness.addHazard(type,lastGoodLocation);
+                    if(which==hazardTypes.length-1){RiderLinkClient link=new RiderLinkClient(this);if(link.signedIn())link.reportCommunityHazard("flock_camera",lastGoodLocation.getLatitude(),lastGoodLocation.getLongitude(),(ok,msg,body)->{android.widget.Toast.makeText(this,ok?"Flock camera shared on RiderLink":"Saved locally • RiderLink share failed: "+msg,android.widget.Toast.LENGTH_LONG).show();link.shutdown();});else{android.widget.Toast.makeText(this,"Saved locally • sign into RiderLink to share it on the live map",android.widget.Toast.LENGTH_LONG).show();link.shutdown();}}
                 })
                 .setNeutralButton("Manage", (dialog, which) -> showRoadSettings()).setNegativeButton("Cancel", null).show();
     }
