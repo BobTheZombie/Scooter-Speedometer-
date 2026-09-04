@@ -36,6 +36,10 @@
             android:name=".BackupCameraActivity"
             android:screenOrientation="sensor"
             android:exported="false" />
+        <activity
+            android:name=".RiderLinkActivity"
+            android:screenOrientation="sensor"
+            android:exported="false" />
         <service
             android:name=".MediaAccessService"
             android:exported="true"
