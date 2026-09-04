@@ -481,6 +481,21 @@ public class MainActivity extends Activity implements LocationListener {
             }
             paint.setAlpha(alpha); c.drawBitmap(bitmap, src, destination, paint); paint.setAlpha(255);
         }
+        private void drawAnimatedCover(Canvas c, Bitmap bitmap, RectF destination, int alpha, float strength) {
+            if (!isPlaying()) { drawCover(c, bitmap, destination, alpha); return; }
+            double time = SystemClock.uptimeMillis() / 1000.0;
+            float pulse = 1f + strength * (.55f + .45f * (float) Math.sin(time * 1.35));
+            float driftX = destination.width() * strength * .38f * (float) Math.sin(time * .31);
+            float driftY = destination.height() * strength * .28f * (float) Math.cos(time * .27);
+            int save = c.save();
+            c.clipRect(destination);
+            c.translate(destination.centerX() + driftX, destination.centerY() + driftY);
+            c.rotate(strength * 16f * (float) Math.sin(time * .19));
+            c.scale(pulse, pulse);
+            c.translate(-destination.centerX(), -destination.centerY());
+            drawCover(c, bitmap, destination, alpha);
+            c.restoreToCount(save);
+        }
         private void drawMediaPanel(Canvas c, float w, float h, float scale) {
             float top = h * .025f, bottom = h * .245f;
             RectF panel = new RectF(w * .035f, top, w * .965f, bottom);
@@ -504,7 +519,7 @@ public class MainActivity extends Activity implements LocationListener {
             float artSize = Math.min(w * .21f, (bottom - top) * .78f);
             RectF artRect = new RectF(w * .055f, top + (bottom - top - artSize) / 2f,
                     w * .055f + artSize, top + (bottom - top + artSize) / 2f);
-            if (art != null) drawCover(c, art, artRect, 255);
+            if (art != null) drawAnimatedCover(c, art, artRect, 255, .035f);
             else {
                 paint.setColor(Color.rgb(20, 39, 49)); c.drawRoundRect(artRect, 12f * scale, 12f * scale, paint);
                 text(c, "♫", artRect.centerX(), artRect.centerY() + 15f * scale, 42f * scale,
@@ -691,9 +706,18 @@ public class MainActivity extends Activity implements LocationListener {
             drawWeatherAtmosphere(c, w, h);
             Bitmap art = albumArt();
             if (art != null && mediaController != null) {
-                drawCover(c, art, new RectF(0, 0, w, h), dashboardLayout.albumAlpha);
+                RectF background = new RectF(0, 0, w, h);
+                drawAnimatedCover(c, art, background, dashboardLayout.albumAlpha, .085f);
+                if (isPlaying()) {
+                    double glowTime = SystemClock.uptimeMillis() / 1000.0;
+                    int glowAlpha = 18 + Math.round(12f * (1f + (float) Math.sin(glowTime * 1.6)) / 2f);
+                    paint.setShader(new LinearGradient(0, h, w, 0,
+                            Color.argb(glowAlpha, 0, 229, 255), Color.argb(glowAlpha, 160, 60, 255), Shader.TileMode.CLAMP));
+                    c.drawRect(background, paint); paint.setShader(null);
+                }
                 paint.setColor(Color.argb(150, 0, 5, 8)); c.drawRect(0, 0, w, h, paint);
             }
+            if (isPlaying() && art != null) postInvalidateDelayed(33L);
             slot(dashboardLayout.media, w, h, mediaSlot);
             slot(dashboardLayout.gauge, w, h, gaugeSlot);
             slot(dashboardLayout.navigation, w, h, navigationSlot);
