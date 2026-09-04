@@ -94,3 +94,7 @@ Tap **Mark Hazard**, select a category, and the current GPS position is stored p
 Run `supabase/riderlink.sql` once in the project's Supabase SQL Editor before using RiderLink. Tap **Riders** on the dashboard to create an account or sign in. Live location is disabled by default and is published only while the RiderLink screen is open and its **Live** switch is enabled. Turning it off deletes the current presence record. Nearby public locations are rounded to approximately 110 meters and automatically disappear after two minutes without an update.
 
 The SOS button includes a five-second cancellation countdown and then shares an exact emergency location with authenticated nearby riders. RiderLink does not contact 911 or guarantee that another rider will respond; call emergency services separately whenever appropriate.
+
+### RiderLink 3.0 social
+
+Version 3.0 adds renewable login sessions, a foreground LIVE location service with a persistent stop-sharing notification, automatic ten-second map refresh, nearby-rider counts, SOS navigation, rider discovery, friend requests, friends-only direct messages, clubs with shareable invite codes, and club group chat. Re-run the complete `supabase/riderlink.sql` migration once after updating; it preserves existing RiderLink accounts and initial tables while adding the social tables and policies.
