@@ -33,6 +33,7 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Long-press weather skin gallery: HTC Sense glass, neon cyan, minimal clear, retro amber, and storm radar
 - Branded launch screen featuring the BobTheZombie scooter mascot and developer credit
 - Real-time animated album artwork with cinematic pan, zoom, pulse, rotation, and shifting neon glow while music plays
+- One-tap full-screen front-camera backup view with mirrored/normal modes and high-contrast parking guides
 
 ## Install
 
@@ -67,3 +68,9 @@ The full dashboard background reacts to current conditions with animated sunligh
 ## Dashboard customization
 
 Tap **Customize** at the bottom of the dashboard. Choose **Drag & resize sections**, then drag the media, speedometer, or navigation outline to reposition it; drag its lower-right dot to resize it. Tap **Done** to keep the layout. The customization menu also includes compact and full portrait/landscape presets, album-art transparency, gauge color and style choices, and three reusable saved-layout slots.
+
+## Backup camera
+
+Tap **Backup Cam** on the dashboard and grant camera permission the first time. The app opens the phone's front camera as a full-screen, mirrored reverse-view display with green/yellow/red guide lines. Tap **Mirrored** to switch to a normal camera orientation, or **Close** to return to the speedometer. The view is live only: the app does not record, photograph, save, or upload camera data.
+
+This is a supplemental view, not a certified reversing system. It can only show the area behind the scooter when the selected front lens is physically aimed there. Stop first, check the surroundings directly, and never rely on the screen alone.
