@@ -4,24 +4,54 @@
         <item name="android:fontFamily">sans-serif</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:colorAccent">#00E5FF</item>
+        <item name="android:colorAccent">#35D9F0</item>
+        <item name="android:colorControlNormal">#9EB4BD</item>
+        <item name="android:colorControlActivated">#35D9F0</item>
+        <item name="android:colorControlHighlight">#2635D9F0</item>
         <item name="android:navigationBarColor">#05080B</item>
         <item name="android:statusBarColor">#05080B</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
         <item name="android:windowBackground">#04090D</item>
+        <item name="android:textColorPrimary">#F2F9FB</item>
+        <item name="android:textColorSecondary">#91AAB4</item>
+        <item name="android:buttonStyle">@style/MaterialButton</item>
+        <item name="android:editTextStyle">@style/MaterialEditText</item>
+        <item name="android:checkboxStyle">@style/MaterialCheckBox</item>
+        <item name="android:switchStyle">@style/MaterialSwitch</item>
         <item name="android:windowContentTransitions">true</item>
         <item name="android:windowAnimationStyle">@style/AppWindowAnimation</item>
         <item name="android:alertDialogTheme">@style/AppDialogTheme</item>
     </style>
     <style name="AppDialogTheme" parent="android:style/Theme.Material.Dialog.Alert">
         <item name="android:fontFamily">sans-serif</item>
-        <item name="android:colorAccent">#00D3EE</item>
-        <item name="android:windowBackground">#0A151B</item>
+        <item name="android:colorAccent">#35D9F0</item>
+        <item name="android:colorControlNormal">#9EB4BD</item>
+        <item name="android:colorControlActivated">#35D9F0</item>
+        <item name="android:windowBackground">@drawable/material_dialog_background</item>
         <item name="android:textColorPrimary">#F4FAFC</item>
         <item name="android:textColorSecondary">#9DB3BC</item>
         <item name="android:windowMinWidthMajor">92%</item>
         <item name="android:windowMinWidthMinor">92%</item>
+        <item name="android:buttonStyle">@style/MaterialDialogButton</item>
+        <item name="android:editTextStyle">@style/MaterialEditText</item>
+        <item name="android:checkboxStyle">@style/MaterialCheckBox</item>
+        <item name="android:switchStyle">@style/MaterialSwitch</item>
+    </style>
+    <style name="MaterialButton" parent="android:style/Widget.Material.Button.Borderless">
+        <item name="android:fontFamily">sans-serif-medium</item><item name="android:textAllCaps">false</item><item name="android:textColor">#F2F9FB</item><item name="android:minHeight">48dp</item><item name="android:paddingLeft">16dp</item><item name="android:paddingRight">16dp</item><item name="android:stateListAnimator">@null</item>
+    </style>
+    <style name="MaterialDialogButton" parent="android:style/Widget.Material.Button.Borderless.Colored">
+        <item name="android:fontFamily">sans-serif-medium</item><item name="android:textAllCaps">false</item><item name="android:textColor">#35D9F0</item><item name="android:minHeight">48dp</item><item name="android:stateListAnimator">@null</item>
+    </style>
+    <style name="MaterialEditText" parent="android:style/Widget.Material.EditText">
+        <item name="android:fontFamily">sans-serif</item><item name="android:textColor">#F2F9FB</item><item name="android:textColorHint">#718F9A</item><item name="android:backgroundTint">#35D9F0</item><item name="android:minHeight">56dp</item><item name="android:paddingLeft">16dp</item><item name="android:paddingRight">16dp</item>
+    </style>
+    <style name="MaterialCheckBox" parent="android:style/Widget.Material.CompoundButton.CheckBox">
+        <item name="android:fontFamily">sans-serif</item><item name="android:textColor">#F2F9FB</item><item name="android:buttonTint">@color/material_control_tint</item><item name="android:minHeight">48dp</item>
+    </style>
+    <style name="MaterialSwitch" parent="android:style/Widget.Material.CompoundButton.Switch">
+        <item name="android:fontFamily">sans-serif-medium</item><item name="android:textColor">#F2F9FB</item><item name="android:thumbTint">@color/material_switch_thumb</item><item name="android:trackTint">@color/material_switch_track</item><item name="android:minHeight">52dp</item><item name="android:showText">false</item>
     </style>
     <style name="AppWindowAnimation" parent="android:style/Animation.Activity">
         <item name="android:activityOpenEnterAnimation">@android:anim/fade_in</item>
