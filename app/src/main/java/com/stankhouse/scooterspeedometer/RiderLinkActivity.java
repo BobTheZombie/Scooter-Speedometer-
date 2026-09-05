@@ -95,7 +95,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         Button socialButton = button("SOCIAL", Color.rgb(0, 91, 112)); header.addView(socialButton, new LinearLayout.LayoutParams(dp(92), dp(46)));
         Button profileButton = button("PROFILE", Color.rgb(20, 54, 64)); header.addView(profileButton, new LinearLayout.LayoutParams(dp(92), dp(46))); root.addView(header);
         status = title("Location sharing OFF", 13, Color.rgb(255, 176, 40)); root.addView(status, new LinearLayout.LayoutParams(-1, dp(42)));
-        map = new WebView(this); map.setLayerType(View.LAYER_TYPE_SOFTWARE, null); WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
+        map = new WebView(this); map.setLayerType(View.LAYER_TYPE_HARDWARE, null); WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         map.setBackgroundColor(Color.rgb(5, 10, 13)); map.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
         map.setWebViewClient(new android.webkit.WebViewClient() {
@@ -109,7 +109,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         TextView liveLabel=title("LIVE",16,Color.WHITE);controls.addView(liveLabel,new LinearLayout.LayoutParams(dp(56),dp(58)));
         sharing = new Switch(this); sharing.setShowText(false); sharing.setGravity(Gravity.CENTER); sharing.setChecked(getSharedPreferences("riderlink_session",MODE_PRIVATE).getBoolean("live",false));
         controls.addView(sharing, new LinearLayout.LayoutParams(dp(64), dp(58)));
-        privacyButton=button("NEARBY",Color.rgb(18,46,55));controls.addView(privacyButton,new LinearLayout.LayoutParams(0,dp(54),.85f));
+        privacyButton=button("NEARBY",Color.rgb(18,46,55));privacyButton.setSingleLine(true);privacyButton.setTextSize(11);controls.addView(privacyButton,new LinearLayout.LayoutParams(dp(94),dp(54)));
         Button refresh = button("REFRESH", Color.rgb(0, 95, 115)); controls.addView(refresh, new LinearLayout.LayoutParams(0, dp(54), 1));
         Button sos = button("SOS", Color.rgb(180, 22, 22)); controls.addView(sos, new LinearLayout.LayoutParams(0, dp(54), .75f)); root.addView(controls);
         root.addView(title("RiderLink SOS does not contact 911. Call emergency services when needed.", 10, Color.rgb(150, 160, 164)), new LinearLayout.LayoutParams(-1, dp(34)));
