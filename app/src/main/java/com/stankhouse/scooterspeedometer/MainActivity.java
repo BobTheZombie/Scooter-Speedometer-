@@ -7,6 +7,8 @@ import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
@@ -32,6 +34,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.text.TextUtils;
 import android.view.MotionEvent;
 import android.view.View;
@@ -43,11 +48,13 @@ import android.widget.Switch;
 import android.widget.TextView;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Locale;
 
 public class MainActivity extends Activity implements LocationListener {
     private static final int LOCATION_REQUEST = 42;
     private static final int CAMERA_REQUEST = 44;
+    private static final int MICROPHONE_REQUEST = 45;
     private LocationManager locationManager;
     private MediaSessionManager mediaSessionManager;
     private AudioManager audioManager;
@@ -76,6 +83,10 @@ public class MainActivity extends Activity implements LocationListener {
     private String roadAlert = "";
     private long roadAlertUntil;
     private boolean weatherConsentPrompted;
+    private SpeechRecognizer speechRecognizer;
+    private String hudVoiceStatus="";
+    private long hudVoiceStatusUntil;
+    private final BroadcastReceiver hudReceiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){if(speedView!=null)speedView.invalidate();}};
 
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
         @Override public void onMetadataChanged(MediaMetadata metadata) { mediaMetadata = metadata; speedView.invalidate(); }
@@ -111,6 +122,8 @@ public class MainActivity extends Activity implements LocationListener {
         speedView = new SpeedView(this);
         speedView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         setContentView(speedView);
+        IntentFilter hudFilter=new IntentFilter(MediaAccessService.ACTION_HUD_UPDATE);
+        if(Build.VERSION.SDK_INT>=33)registerReceiver(hudReceiver,hudFilter,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(hudReceiver,hudFilter);
         enterImmersive();
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
@@ -121,6 +134,17 @@ public class MainActivity extends Activity implements LocationListener {
             if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
                 requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 43);
         }
+    }
+
+    private void startVoiceCommand(){
+        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MICROPHONE_REQUEST);return;}
+        if(!SpeechRecognizer.isRecognitionAvailable(this)){android.widget.Toast.makeText(this,"Speech recognition is not installed",android.widget.Toast.LENGTH_LONG).show();return;}
+        if(speechRecognizer==null){speechRecognizer=SpeechRecognizer.createSpeechRecognizer(this);speechRecognizer.setRecognitionListener(new RecognitionListener(){public void onReadyForSpeech(Bundle b){setHudVoiceStatus("LISTENING…");}public void onBeginningOfSpeech(){setHudVoiceStatus("HEARING YOU…");}public void onRmsChanged(float r){}public void onBufferReceived(byte[] b){}public void onEndOfSpeech(){setHudVoiceStatus("WORKING…");}public void onError(int e){setHudVoiceStatus("DIDN'T CATCH THAT — TAP MIC");}public void onResults(Bundle b){ArrayList<String> values=b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);if(values==null||values.isEmpty())setHudVoiceStatus("DIDN'T CATCH THAT");else executeVoiceCommand(values);}public void onPartialResults(Bundle b){}public void onEvent(int t,Bundle b){}});}
+        Intent listen=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);listen.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);listen.putExtra(RecognizerIntent.EXTRA_LANGUAGE,Locale.getDefault());listen.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,5);listen.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,false);listen.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,1100L);listen.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,700L);speechRecognizer.startListening(listen);
+    }
+    private void setHudVoiceStatus(String value){hudVoiceStatus=value;hudVoiceStatusUntil=SystemClock.elapsedRealtime()+4500L;if(speedView!=null)speedView.invalidate();}
+    private void executeVoiceCommand(List<String> candidates){String heard=candidates.get(0).toLowerCase(Locale.US);String done="COMMAND NOT RECOGNIZED";for(String raw:candidates){String command=raw.toLowerCase(Locale.US);if(command.contains("navigate")||command.contains("directions")){beginNavigation();done="OPENING NAVIGATION";break;}if(command.contains("backup")||command.contains("rear camera")){openBackupCamera();done="OPENING BACKUP CAMERA";break;}if(command.contains("rider")||command.contains("social")){startActivity(new Intent(this,RiderLinkActivity.class));done="OPENING RIDERLINK";break;}if(command.contains("next")&&command.contains("song")){mediaNext();done="NEXT TRACK";break;}if(command.contains("previous")||command.contains("last song")){mediaPrevious();done="PREVIOUS TRACK";break;}if(command.contains("pause")||command.contains("play")){mediaPlayPause();done="MEDIA TOGGLED";break;}if(command.contains("volume up")||command.contains("louder")){adjustMusicVolume(AudioManager.ADJUST_RAISE);done="VOLUME UP";break;}if(command.contains("volume down")||command.contains("quieter")){adjustMusicVolume(AudioManager.ADJUST_LOWER);done="VOLUME DOWN";break;}if(command.contains("weather")||command.contains("forecast")){requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);done="REFRESHING WEATHER";break;}if(command.contains("hazard")){showHazardPicker();done="CHOOSE HAZARD";break;}if(command.contains("customize")||command.contains("settings")){speedView.showDashboardCustomizer();done="OPENING CUSTOMIZE";break;}}
+        setHudVoiceStatus(done+("COMMAND NOT RECOGNIZED".equals(done)?" • "+heard.toUpperCase(Locale.US):""));
     }
 
     private void enterImmersive() {
@@ -183,7 +207,7 @@ public class MainActivity extends Activity implements LocationListener {
     private void showWeatherProviderPicker(){String[] choices={"Automatic fallback","Open-Meteo","MET Norway","AccuWeather (API key required)"};new AlertDialog.Builder(this).setTitle("Weather provider").setSingleChoiceItems(choices,weatherRepository.provider(),(d,which)->{d.dismiss();if(which==3&&prefs.getString("accuweather_api_key","").isEmpty()){showAccuWeatherKeyDialog();return;}prefs.edit().putInt("weather_provider",which).apply();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}).setNegativeButton("Back",(d,w)->showWeatherSettings()).show();}
     private void showAccuWeatherKeyDialog(){EditText input=weatherInput("AccuWeather API key");input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);input.setText(prefs.getString("accuweather_api_key",""));new AlertDialog.Builder(this).setTitle("AccuWeather access").setMessage("Enter your own AccuWeather developer key. AccuWeather requires attribution and an appropriate license for vehicle use. AccuWeather refresh is limited to 10 minutes to protect your quota.").setView(input).setPositiveButton("SAVE & USE",(d,w)->{String key=input.getText().toString().trim();if(key.isEmpty()){android.widget.Toast.makeText(this,"API key not saved",android.widget.Toast.LENGTH_LONG).show();return;}prefs.edit().putString("accuweather_api_key",key).putInt("weather_provider",3).apply();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}).setNeutralButton("REMOVE KEY",(d,w)->{prefs.edit().remove("accuweather_api_key").putInt("weather_provider",0).apply();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}).setNegativeButton("Cancel",null).show();}
 
-    private void showVoiceStudio(){String[] items={"Voice  •  "+weatherVoice.voiceName(),"Speech speed  •  "+Math.round(weatherVoice.rate()*100)+"%","Pitch  •  "+Math.round(weatherVoice.pitch()*100)+"%","Preview voice","Open Android voice downloads"};new AlertDialog.Builder(this).setTitle("Voice Studio").setItems(items,(d,which)->{if(which==0)showVoicePicker();else if(which==1)showVoiceSlider(true);else if(which==2)showVoiceSlider(false);else if(which==3)weatherVoice.preview();else{try{startActivity(new Intent("com.android.settings.TTS_SETTINGS"));}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}}}).setNegativeButton("Done",null).show();}
+    private void showVoiceStudio(){boolean messages=prefs.getBoolean("hud_speak_messages",true),calls=prefs.getBoolean("hud_speak_calls",true);String[] items={"Voice  •  "+weatherVoice.voiceName(),"Speech speed  •  "+Math.round(weatherVoice.rate()*100)+"%","Pitch  •  "+Math.round(weatherVoice.pitch()*100)+"%","Read incoming messages  •  "+(messages?"ON":"OFF"),"Announce incoming calls  •  "+(calls?"ON":"OFF"),"Preview voice","Open Android voice downloads"};new AlertDialog.Builder(this).setTitle("Voice Studio").setItems(items,(d,which)->{if(which==0)showVoicePicker();else if(which==1)showVoiceSlider(true);else if(which==2)showVoiceSlider(false);else if(which==3){prefs.edit().putBoolean("hud_speak_messages",!messages).apply();showVoiceStudio();}else if(which==4){prefs.edit().putBoolean("hud_speak_calls",!calls).apply();showVoiceStudio();}else if(which==5)weatherVoice.preview();else{try{startActivity(new Intent("com.android.settings.TTS_SETTINGS"));}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}}}).setNegativeButton("Done",null).show();}
     private void showVoicePicker(){weatherVoice.voices(voices->{if(voices.isEmpty()){android.widget.Toast.makeText(this,"No voices found. Install voices in Android Text-to-speech settings.",android.widget.Toast.LENGTH_LONG).show();return;}String[] labels=new String[voices.size()];for(int i=0;i<voices.size();i++){android.speech.tts.Voice v=voices.get(i);labels[i]=v.getLocale().getDisplayName()+"  •  "+v.getName()+(v.isNetworkConnectionRequired()?"  [online]":"  [offline]");}new AlertDialog.Builder(this).setTitle("Installed voices").setItems(labels,(d,which)->{weatherVoice.setVoice(voices.get(which));weatherVoice.preview();}).setNegativeButton("Back",(d,w)->showVoiceStudio()).show();});}
     private void showVoiceSlider(boolean rate){android.widget.SeekBar bar=new android.widget.SeekBar(this);bar.setMax(100);float current=rate?weatherVoice.rate():weatherVoice.pitch();bar.setProgress(Math.round((current-.5f)*100));bar.setPadding(30,20,30,20);new AlertDialog.Builder(this).setTitle(rate?"Speech speed":"Voice pitch").setMessage("50% to 150% — 90–100% usually sounds most natural.").setView(bar).setPositiveButton("SAVE",(d,w)->{float value=.5f+bar.getProgress()/100f;if(rate)weatherVoice.setRate(value);else weatherVoice.setPitch(value);weatherVoice.preview();}).setNegativeButton("Cancel",null).show();}
     private void showWeatherRefreshPicker(){String[] choices={"Every minute (live)","Every 2 minutes","Every 5 minutes","Every 10 minutes"};new AlertDialog.Builder(this).setTitle("Weather refresh rate").setSingleChoiceItems(choices,Math.max(0,Math.min(3,prefs.getInt("weather_refresh",0))),(d,which)->{prefs.edit().putInt("weather_refresh",which).apply();d.dismiss();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}).setNegativeButton("Back",(d,w)->showWeatherSettings()).show();}
@@ -385,6 +409,8 @@ public class MainActivity extends Activity implements LocationListener {
         if (requestCode == LOCATION_REQUEST && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) startGps();
         if (requestCode == CAMERA_REQUEST && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED)
             openBackupCamera();
+        if (requestCode == MICROPHONE_REQUEST && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED)
+            startVoiceCommand();
         speedView.invalidate();
     }
     private void resetStats() { tripMeters = 0; maxMps = 0; saveStats(); speedView.invalidate(); }
@@ -463,6 +489,8 @@ public class MainActivity extends Activity implements LocationListener {
         view.setMinHeight(Math.round(58 * getResources().getDisplayMetrics().density)); return view;
     }
     @Override protected void onDestroy() {
+        try{unregisterReceiver(hudReceiver);}catch(Exception ignored){}
+        if(speechRecognizer!=null)speechRecognizer.destroy();
         if (weatherVoice != null) weatherVoice.shutdown();
         if (roadAwareness != null) roadAwareness.shutdown();
         super.onDestroy();
@@ -493,6 +521,7 @@ public class MainActivity extends Activity implements LocationListener {
         private boolean resizingSection;
         private final RectF mediaSlot = new RectF(), gaugeSlot = new RectF(), navigationSlot = new RectF();
         private final RectF dasherCard = new RectF();
+        private final RectF hudMicRect = new RectF();
         private float editStartX, editStartY;
         private final RectF editStartRect = new RectF();
         private boolean customizePressed;
@@ -953,6 +982,16 @@ public class MainActivity extends Activity implements LocationListener {
             paint.setStyle(Paint.Style.FILL);
         }
 
+        private void drawHud(Canvas c,float w,float h,float scale){
+            float cy=h*.045f,r=Math.max(18f*scale,Math.min(w,h)*.032f);hudMicRect.set(w*.705f-r,cy-r,w*.705f+r,cy+r);
+            paint.setStyle(Paint.Style.FILL);paint.setColor(Color.argb(235,5,25,33));c.drawRoundRect(new RectF(w*.655f,h*.008f,w*.982f,h*.082f),18f*scale,18f*scale,paint);
+            paint.setColor(hudVoiceStatusUntil>SystemClock.elapsedRealtime()?Color.rgb(255,64,74):Color.rgb(0,135,158));c.drawCircle(hudMicRect.centerX(),hudMicRect.centerY(),r,paint);text(c,"●",hudMicRect.centerX(),hudMicRect.centerY()+7f*scale,17f*scale,Color.WHITE,Paint.Align.CENTER,true);
+            int messages=prefs.getInt("hud_message_count",0),calls=prefs.getInt("hud_call_count",0);drawHudIcon(c,"✉",w*.825f,cy,messages,scale);drawHudIcon(c,"☎",w*.935f,cy,calls,scale);
+            long age=System.currentTimeMillis()-prefs.getLong("hud_time",0);if(age<12000L){String kind=prefs.getString("hud_type","message");String title=prefs.getString("hud_title","");String body=prefs.getString("hud_body","");RectF banner=new RectF(w*.08f,h*.088f,w*.92f,h*.145f);paint.setColor(Color.argb(242,3,22,29));c.drawRoundRect(banner,15f*scale,15f*scale,paint);text(c,("call".equals(kind)?"☎  ":"✉  ")+ellipsize(title,30),banner.left+w*.025f,h*.112f,13f*scale,Color.rgb(0,229,255),Paint.Align.LEFT,true);text(c,ellipsize(body,64),banner.left+w*.025f,h*.136f,10f*scale,Color.WHITE,Paint.Align.LEFT,false);postInvalidateDelayed(500L);}
+            if(hudVoiceStatusUntil>SystemClock.elapsedRealtime()){RectF statusBox=new RectF(w*.22f,h*.15f,w*.78f,h*.185f);paint.setColor(Color.argb(238,0,80,96));c.drawRoundRect(statusBox,12f*scale,12f*scale,paint);text(c,hudVoiceStatus,w*.5f,h*.174f,11f*scale,Color.WHITE,Paint.Align.CENTER,true);postInvalidateDelayed(250L);}
+        }
+        private void drawHudIcon(Canvas c,String icon,float x,float y,int count,float scale){text(c,icon,x,y+9f*scale,24f*scale,Color.WHITE,Paint.Align.CENTER,true);if(count>0){float bx=x+17f*scale,by=y-14f*scale,br=10f*scale;paint.setColor(Color.rgb(230,35,50));c.drawCircle(bx,by,br,paint);text(c,count>99?"99+":String.valueOf(count),bx,by+4f*scale,count>99?7f*scale:9f*scale,Color.WHITE,Paint.Align.CENTER,true);}}
+
         private void drawSenseWeatherEffects(Canvas c, RectF panel, float scale) {
             if (weatherData == null) return;
             long now = SystemClock.uptimeMillis();
@@ -1147,6 +1186,7 @@ public class MainActivity extends Activity implements LocationListener {
             int mediaSave = beginTransform(c, mediaSlot, baseMedia);
             drawMediaPanel(c, w, h, scale);
             c.restoreToCount(mediaSave);
+            drawHud(c,w,h,scale);
             drawWeatherPanel(c, w, h, scale);
             drawAlertBanner(c, w, h, scale);
             drawDasherCard(c, w, h, scale);
@@ -1352,7 +1392,9 @@ public class MainActivity extends Activity implements LocationListener {
                 boolean riderLinkPressed = !editingDashboard && downX >= w * .245f && downX <= w * .405f &&
                         downY >= h * .90f && downY <= h * .96f && e.getX() >= w * .245f &&
                         e.getX() <= w * .405f && e.getY() >= h * .90f && e.getY() <= h * .96f;
-                if (riderLinkPressed) {
+                boolean micPressed=!editingDashboard&&hudMicRect.contains(downX,downY)&&hudMicRect.contains(e.getX(),e.getY());
+                if(micPressed){startVoiceCommand();
+                } else if (riderLinkPressed) {
                     startActivity(new Intent(MainActivity.this, RiderLinkActivity.class));
                 } else if (hazardPressed) {
                     showHazardPicker();
