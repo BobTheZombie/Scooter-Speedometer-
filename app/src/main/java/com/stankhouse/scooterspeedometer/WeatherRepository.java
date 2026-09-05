@@ -137,12 +137,12 @@ public class WeatherRepository {
     }
 
     public int provider() { return settings.getInt("weather_provider", 0); }
-    public String providerName() { int p=provider(); return p==1?"OPEN-METEO":p==2?"MET NORWAY":"AUTO"; }
+    public String providerName() { int p=provider(); return p==1?"OPEN-METEO":p==2?"MET NORWAY":p==3?"ACCUWEATHER":"AUTO"; }
     public boolean customLocation() { return settings.getBoolean("weather_custom_location", false); }
     public double latitude(double gps) { return customLocation()?Double.longBitsToDouble(settings.getLong("weather_custom_lat",Double.doubleToLongBits(gps))):gps; }
     public double longitude(double gps) { return customLocation()?Double.longBitsToDouble(settings.getLong("weather_custom_lon",Double.doubleToLongBits(gps))):gps; }
     public String locationName() { return customLocation()?settings.getString("weather_custom_name","Custom location"):"GPS location"; }
-    public long refreshMs() { int[] minutes={1,2,5,10};int i=Math.max(0,Math.min(3,settings.getInt("weather_refresh",0)));return minutes[i]*60000L; }
+    public long refreshMs() { int[] minutes={1,2,5,10};int i=Math.max(0,Math.min(3,settings.getInt("weather_refresh",0)));long chosen=minutes[i]*60000L;return provider()==3?Math.max(chosen,10*60000L):chosen; }
     public void clearCache() { cache.edit().clear().apply(); synchronized (WeatherRepository.class){fetching=false;fetchingAlerts=false;} }
 
     public WeatherData cached() {
@@ -175,7 +175,8 @@ public class WeatherRepository {
             WeatherData result = null;
             try {
                 int selected=provider();
-                if(selected==2)result=fetchMetNorway(requestLatitude,requestLongitude);
+                if(selected==3)result=fetchAccuWeather(requestLatitude,requestLongitude);
+                else if(selected==2)result=fetchMetNorway(requestLatitude,requestLongitude);
                 else if(selected==1)result=fetchOpenMeteo(requestLatitude,requestLongitude);
                 else {try{result=fetchOpenMeteo(requestLatitude,requestLongitude);}catch(Exception first){result=fetchMetNorway(requestLatitude,requestLongitude);}}
                 cache.edit().putFloat("temperature", (float) result.temperature)
@@ -258,6 +259,8 @@ public class WeatherRepository {
         finally{connection.disconnect();}
     }
 
+    private String getText(String endpoint,String bearer) throws Exception {HttpURLConnection connection=(HttpURLConnection)new URL(endpoint).openConnection();try{connection.setConnectTimeout(8000);connection.setReadTimeout(8000);connection.setRequestProperty("User-Agent","Scooter-Speedometer/4.9");if(bearer!=null&&!bearer.isEmpty())connection.setRequestProperty("Authorization","Bearer "+bearer);BufferedReader reader=new BufferedReader(new InputStreamReader(connection.getInputStream()));StringBuilder json=new StringBuilder();String line;while((line=reader.readLine())!=null)json.append(line);reader.close();return json.toString();}finally{connection.disconnect();}}
+
     private WeatherData fetchOpenMeteo(double latitude,double longitude) throws Exception {
         String endpoint=String.format(Locale.US,"https://api.open-meteo.com/v1/forecast?latitude=%.5f&longitude=%.5f&current=temperature_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m&minutely_15=precipitation,precipitation_probability,weather_code,wind_gusts_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1",latitude,longitude);
         JSONObject root=getJson(endpoint),current=root.getJSONObject("current");int precipMinutes=-1,precipChance=0,precipCode=0;double maxGust=0;JSONObject q=root.optJSONObject("minutely_15");
@@ -270,6 +273,15 @@ public class WeatherRepository {
     }
 
     private int metCode(String s){s=s.toLowerCase(Locale.US);if(s.contains("thunder"))return 95;if(s.contains("snow")||s.contains("sleet"))return 73;if(s.contains("rain")||s.contains("shower"))return 61;if(s.contains("fog"))return 45;if(s.contains("partlycloudy"))return 2;if(s.contains("cloudy"))return 3;return 0;}
+
+    private WeatherData fetchAccuWeather(double latitude,double longitude) throws Exception {
+        String key=settings.getString("accuweather_api_key","").trim();if(key.isEmpty())throw new Exception("AccuWeather API key required");
+        String locationKey=cache.getString("accu_location_key","");float oldLat=cache.getFloat("accu_lat",999),oldLon=cache.getFloat("accu_lon",999);
+        if(locationKey.isEmpty()||Math.abs(oldLat-latitude)>.02||Math.abs(oldLon-longitude)>.02){String endpoint=String.format(Locale.US,"https://dataservice.accuweather.com/locations/v1/cities/geoposition/search?q=%.5f,%.5f",latitude,longitude);JSONObject place=new JSONObject(getText(endpoint,key));locationKey=place.getString("Key");cache.edit().putString("accu_location_key",locationKey).putFloat("accu_lat",(float)latitude).putFloat("accu_lon",(float)longitude).apply();}
+        String currentEndpoint="https://dataservice.accuweather.com/currentconditions/v1/"+URLEncoder.encode(locationKey,"UTF-8")+"?details=true";JSONArray rows=new JSONArray(getText(currentEndpoint,key));JSONObject current=rows.getJSONObject(0);double temp=current.getJSONObject("Temperature").getJSONObject("Imperial").getDouble("Value");JSONObject real=current.optJSONObject("RealFeelTemperature");double feels=real==null?temp:real.getJSONObject("Imperial").optDouble("Value",temp);int code=accuCode(current.optInt("WeatherIcon",7),current.optString("PrecipitationType",""));JSONObject wind=current.optJSONObject("Wind"),gust=current.optJSONObject("WindGust");double windSpeed=wind==null?0:wind.getJSONObject("Speed").getJSONObject("Imperial").optDouble("Value",0);int direction=wind==null?0:wind.getJSONObject("Direction").optInt("Degrees",0);double gustSpeed=gust==null?windSpeed:gust.getJSONObject("Speed").getJSONObject("Imperial").optDouble("Value",windSpeed);boolean wet=current.optBoolean("HasPrecipitation",false);return new WeatherData(temp,feels,wet?100:0,windSpeed,direction,code,System.currentTimeMillis(),wet?0:-1,wet?100:0,code,gustSpeed);
+    }
+
+    private int accuCode(int icon,String type){if("Snow".equalsIgnoreCase(type)||"Ice".equalsIgnoreCase(type)||"Mixed".equalsIgnoreCase(type))return 73;if("Rain".equalsIgnoreCase(type))return 61;if(icon>=15&&icon<=17)return 95;if(icon==11)return 45;if(icon>=12&&icon<=18)return 61;if(icon>=19&&icon<=29)return 73;if(icon==1||icon==2||icon==30||icon==33||icon==34)return 0;if(icon<=6||icon==35||icon==36)return 2;return 3;}
 
     public void geocode(String query,LocationCallback callback){EXECUTOR.execute(()->{boolean ok=false;String label=query;double lat=0,lon=0;try{String endpoint="https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name="+URLEncoder.encode(query,"UTF-8");JSONArray results=getJson(endpoint).optJSONArray("results");if(results!=null&&results.length()>0){JSONObject hit=results.getJSONObject(0);lat=hit.getDouble("latitude");lon=hit.getDouble("longitude");label=hit.optString("name",query);String region=hit.optString("admin1","");if(!region.isEmpty())label+=", "+region;ok=true;}}catch(Exception ignored){}boolean success=ok;String found=label;double foundLat=lat,foundLon=lon;main.post(()->callback.onLocation(success,found,foundLat,foundLon));});}
 
