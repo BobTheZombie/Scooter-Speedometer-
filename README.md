@@ -4,6 +4,10 @@
 
 The entire riding experience now uses one cohesive visual system: dashboard, settings, RiderLink, social, profile/avatar, navigation, delivery cockpit, weather, media, backup camera, onboarding and dialogs. The refresh adds consistent icon-led navigation, layered glass surfaces, improved typography, spacing, touch targets, transitions, and dedicated user/settings hubs while preserving Avaturn 3D avatars and RiderLink data.
 
+## Version 5.5 — Material interface
+
+Replaces remaining platform/Holo-looking widgets with a dependency-light Material 3 visual system. Dialogs, buttons, text fields, checkboxes and switches now use modern rounded shapes, tonal surface containers, state-aware cyan controls and consistent 48–56dp touch targets without adding a large UI runtime dependency.
+
 A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 
 ## Features
