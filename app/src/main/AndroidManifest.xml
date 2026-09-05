@@ -27,10 +27,12 @@
         </activity>
         <activity
             android:name=".MainActivity"
+            android:hardwareAccelerated="true"
             android:screenOrientation="sensor"
             android:exported="false" />
         <activity
             android:name=".BuiltInNavigationActivity"
+            android:hardwareAccelerated="true"
             android:screenOrientation="sensor"
             android:exported="false" />
         <activity
@@ -39,10 +41,12 @@
             android:exported="false" />
         <activity
             android:name=".RiderLinkActivity"
+            android:hardwareAccelerated="true"
             android:screenOrientation="sensor"
             android:exported="false" />
         <activity
             android:name=".RiderLinkSocialActivity"
+            android:hardwareAccelerated="true"
             android:screenOrientation="sensor"
             android:exported="false" />
         <service
