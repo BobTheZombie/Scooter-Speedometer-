@@ -15,6 +15,8 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Removed translucent cloud-blob overlays that could resemble torn or retained animation frames
 - Configurable live weather provider: Automatic fallback, Open-Meteo, or MET Norway
 - GPS weather or custom city, ZIP code, or latitude/longitude with 1–10 minute refresh control
+- Optional bring-your-own-key AccuWeather support with quota-safe refresh limits and source attribution
+- Voice Studio for installed natural Android voices, pitch, speed, and spoken preview
 - Built-in navigation uses a smooth, heading-aware live scooter puck and follow camera
 - RiderLink bottom controls use compact fixed single-line sizing on narrow phones
 - Expanded Delivery Cockpit extracts every detail exposed in DoorDash notifications: restaurant, amount, explicit tip, distance, item count, time, pickup and drop-off text
