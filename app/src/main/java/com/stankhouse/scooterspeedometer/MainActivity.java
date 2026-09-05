@@ -943,14 +943,8 @@ public class MainActivity extends Activity implements LocationListener {
                     c.drawCircle(panel.left + pw * .14f, panel.centerY(), ph * (.14f + i * .09f) * pulse, paint);
                 }
             }
-            if (cloud) {
-                paint.setColor(Color.argb(rain || thunder ? 40 : 25, 225, 239, 246));
-                for (int i = 0; i < 4; i++) {
-                    float x = panel.left - pw * .15f + (float) ((i * pw * .34f + now / (18f + i * 4f)) % (pw * 1.3f));
-                    float y = panel.top + ph * (.25f + (i % 2) * .24f);
-                    c.drawOval(new RectF(x-ph*.20f,y-ph*.12f,x+ph*.36f,y+ph*.13f),paint);
-                }
-            }
+            // Cloud blobs were intentionally removed. Their overlapping translucent geometry
+            // looked like retained/torn frames on high-refresh displays.
             if (rain || thunder) {
                 paint.setStrokeWidth(Math.max(1.5f, scale)); paint.setColor(Color.argb(125, 115, 210, 255));
                 for (int i = 0; i < 18; i++) {
@@ -1004,15 +998,8 @@ public class MainActivity extends Activity implements LocationListener {
                 c.drawCircle(w * .84f, h * .31f, w * .045f, paint);
             }
 
-            if (code >= 1 && code <= 3 || rain || thunder) {
-                paint.setColor(Color.argb(38, 225, 238, 245));
-                for (int i = 0; i < 7; i++) {
-                    float x = (float) ((i * w * .24 + now * (.006 + i * .0007)) % (w + w * .35)) - w * .18f;
-                    float y = h * (.16f + (i % 3) * .12f);
-                    float r = w * (.09f + (i % 2) * .025f);
-                    c.drawOval(new RectF(x-r,y-r*.48f,x+r*1.55f,y+r*.55f),paint);
-                }
-            }
+            // Use the opaque sky gradient for cloud cover. Large translucent cloud circles
+            // caused visible bands/bubbles over dashboard cards and have been removed.
 
             if (rain || thunder) {
                 paint.setColor(Color.argb(thunder ? 145 : 105, 140, 210, 255));
