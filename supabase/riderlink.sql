@@ -164,15 +164,16 @@ grant execute on function public.nearby_community_hazards(double precision,doubl
 
 -- RiderLink 4.0 identity + scooter garage migration. Safe over all earlier versions.
 alter table public.profiles add column if not exists avatar_config jsonb not null default '{}'::jsonb;
+alter table public.profiles add column if not exists avatar_3d_url text not null default '' check(char_length(avatar_3d_url)<=2000);
 alter table public.profiles add column if not exists scooter_make text not null default '' check(char_length(scooter_make)<=60);
 alter table public.profiles add column if not exists scooter_model text not null default '' check(char_length(scooter_model)<=80);
 alter table public.profiles add column if not exists scooter_upgrades text not null default '' check(char_length(scooter_upgrades)<=1000);
 
 drop function if exists public.my_friends();
 create function public.my_friends()
-returns table(id uuid,username text,scooter text,scooter_make text,scooter_model text,scooter_upgrades text,avatar_config jsonb)
+returns table(id uuid,username text,scooter text,scooter_make text,scooter_model text,scooter_upgrades text,avatar_config jsonb,avatar_3d_url text)
 language sql stable security definer set search_path=public as $$
- select p.id,p.username,p.scooter,p.scooter_make,p.scooter_model,p.scooter_upgrades,p.avatar_config
+ select p.id,p.username,p.scooter,p.scooter_make,p.scooter_model,p.scooter_upgrades,p.avatar_config,p.avatar_3d_url
  from friendships f join profiles p on p.id=case when f.requester_id=auth.uid() then f.addressee_id else f.requester_id end
  where f.status='accepted' and auth.uid() in(f.requester_id,f.addressee_id) order by p.username;
 $$;
