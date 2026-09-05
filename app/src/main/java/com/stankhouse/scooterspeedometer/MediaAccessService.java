@@ -18,6 +18,7 @@ public class MediaAccessService extends NotificationListenerService {
         super.onCreate();
         speech = new TextToSpeech(this, status -> {
             speechReady = status == TextToSpeech.SUCCESS;
+            if(speechReady) VoiceSettings.apply(this,speech);
             if (speechReady) speech.setLanguage(java.util.Locale.US);
         });
     }
