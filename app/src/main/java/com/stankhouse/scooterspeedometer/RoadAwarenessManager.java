@@ -42,7 +42,7 @@ public class RoadAwarenessManager implements TextToSpeech.OnInitListener {
         limitMph = prefs.getFloat("limit_mph", -1); roadName = prefs.getString("road_name", "");
         speech = new TextToSpeech(this.context, this);
     }
-    @Override public void onInit(int status) { speechReady = status == TextToSpeech.SUCCESS; if (speechReady) speech.setLanguage(Locale.US); }
+    @Override public void onInit(int status) { speechReady = status == TextToSpeech.SUCCESS; if (speechReady) { speech.setLanguage(Locale.US); VoiceSettings.apply(context,speech); } }
     public double limitMph() { return limitMph; }
     public String roadName() { return roadName; }
     public int thresholdMph() { return prefs.getInt("threshold", 5); }
