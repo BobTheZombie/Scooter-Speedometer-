@@ -68,24 +68,24 @@ public class BackupCameraActivity extends Activity {
         root.addView(preview, new FrameLayout.LayoutParams(-1, -1));
         root.addView(new GuideView(), new FrameLayout.LayoutParams(-1, -1));
 
-        mirrorButton = controlButton("MIRRORED");
+        mirrorButton = controlButton("↔  Mirrored");
         FrameLayout.LayoutParams mirrorParams = new FrameLayout.LayoutParams(dp(132), dp(52), Gravity.BOTTOM | Gravity.START);
         mirrorParams.setMargins(dp(18), 0, 0, dp(22));
         root.addView(mirrorButton, mirrorParams);
         mirrorButton.setOnClickListener(v -> {
             mirrored = !mirrored;
-            mirrorButton.setText(mirrored ? "MIRRORED" : "NORMAL");
+            mirrorButton.setText(mirrored ? "↔  Mirrored" : "↔  Normal");
             applyMirror();
         });
 
-        Button close = controlButton("CLOSE  ×");
+        Button close = controlButton("×  Close");
         FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(dp(116), dp(52), Gravity.BOTTOM | Gravity.END);
         closeParams.setMargins(0, 0, dp(18), dp(22));
         root.addView(close, closeParams);
         close.setOnClickListener(v -> finish());
 
         TextView hint = new TextView(this);
-        hint.setText("FRONT CAMERA • SUPPLEMENTAL VIEW ONLY");
+        hint.setText("◉  REAR VIEW ASSIST • FRONT CAMERA");
         hint.setTextColor(Color.WHITE);
         hint.setTextSize(12);
         hint.setGravity(Gravity.CENTER);
