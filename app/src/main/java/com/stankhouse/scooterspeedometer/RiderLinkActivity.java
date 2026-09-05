@@ -57,7 +57,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         EditText field = new EditText(this); field.setHint(hint); field.setTextColor(Color.WHITE); field.setHintTextColor(Color.rgb(125, 150, 160));
         field.setSingleLine(true); if (password) field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); return field;
     }
-    private Button button(String text, int color) { Button b = new Button(this); b.setText(text); b.setTextColor(Color.WHITE); b.setBackgroundColor(color); return b; }
+    private Button button(String text, int color) { Button b = new Button(this); b.setText(text); UiKit.button(b,color); return b; }
 
     private void showAuthentication() {
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setGravity(Gravity.CENTER);
