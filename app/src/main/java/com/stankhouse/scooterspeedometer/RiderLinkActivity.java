@@ -56,15 +56,14 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     }
     private EditText input(String hint, boolean password) {
         EditText field = new EditText(this); field.setHint(hint); field.setTextColor(Color.WHITE); field.setHintTextColor(Color.rgb(125, 150, 160));
-        field.setSingleLine(true);field.setPadding(dp(16),0,dp(16),0);field.setBackground(UiKit.rounded(this,Color.rgb(14,31,38),14,Color.rgb(36,66,76))); if (password) field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); return field;
+        UiKit.field(field); if (password) field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); return field;
     }
     private Button button(String text, int color) { Button b = new Button(this); b.setText(text); UiKit.button(b,color); return b; }
 
     private void showAuthentication() {
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setGravity(Gravity.CENTER);
-        root.setPadding(dp(28), dp(24), dp(28), dp(24)); root.setBackgroundColor(Color.rgb(4, 10, 14));
-        root.addView(title("RIDERLINK", 34, Color.rgb(0, 229, 255)));
-        root.addView(title("Find riders. Ride together. Help nearby.", 15, Color.rgb(180, 202, 212)));
+        root.setPadding(dp(28), dp(24), dp(28), dp(24)); root.setBackground(UiKit.screenBackground(this));
+        root.addView(UiKit.header(this,"◉","RiderLink","FIND RIDERS • RIDE TOGETHER • HELP NEARBY"),new LinearLayout.LayoutParams(-1,dp(76)));
         EditText email = input("Email", false), password = input("Password (6+ characters)", true);
         root.addView(email, new LinearLayout.LayoutParams(-1, dp(58))); root.addView(password, new LinearLayout.LayoutParams(-1, dp(58)));
         Button signIn = button("SIGN IN", Color.rgb(0, 105, 125)); Button create = button("CREATE RIDER ACCOUNT", Color.rgb(24, 65, 76));
@@ -89,12 +88,12 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     }
 
     private void showRiderLink() {
-        LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(Color.rgb(4, 10, 14));
+        LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackground(UiKit.screenBackground(this));
         root.setPadding(0, 0, 0, 0);
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL); header.setPadding(dp(10), dp(4), dp(10), dp(4));
-        TextView logo = title("RIDERLINK", 22, Color.rgb(0, 229, 255)); logo.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL); header.addView(logo, new LinearLayout.LayoutParams(0, dp(54), 1));
-        Button socialButton = button("SOCIAL", Color.rgb(0, 91, 112)); header.addView(socialButton, new LinearLayout.LayoutParams(dp(92), dp(46)));
-        Button profileButton = button("PROFILE", Color.rgb(20, 54, 64)); header.addView(profileButton, new LinearLayout.LayoutParams(dp(92), dp(46))); root.addView(header);
+        header.addView(UiKit.header(this,"◉","RiderLink","LIVE RIDER NETWORK"),new LinearLayout.LayoutParams(0,dp(64),1));
+        Button socialButton = UiKit.iconButton(this,"♟","Social",UiKit.SURFACE_ACTIVE); header.addView(socialButton, new LinearLayout.LayoutParams(dp(100), dp(46)));
+        Button profileButton = UiKit.iconButton(this,"●","Me",UiKit.SURFACE_HIGH); header.addView(profileButton, new LinearLayout.LayoutParams(dp(78), dp(46))); root.addView(header);
         status = title("Location sharing OFF", 13, Color.rgb(255, 176, 40)); root.addView(status, new LinearLayout.LayoutParams(-1, dp(42)));
         map = new WebView(this); map.setLayerType(View.LAYER_TYPE_HARDWARE, null); WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
@@ -110,9 +109,9 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         TextView liveLabel=title("LIVE",15,Color.WHITE);controls.addView(liveLabel,new LinearLayout.LayoutParams(dp(48),dp(58)));
         sharing = new Switch(this); sharing.setShowText(false); sharing.setGravity(Gravity.CENTER); sharing.setChecked(getSharedPreferences("riderlink_session",MODE_PRIVATE).getBoolean("live",false));
         controls.addView(sharing, new LinearLayout.LayoutParams(dp(50), dp(58)));
-        privacyButton=compactButton("NEARBY",Color.rgb(18,46,55),10);controls.addView(privacyButton,new LinearLayout.LayoutParams(dp(78),dp(54)));
-        Button refresh = compactButton("REFRESH", Color.rgb(0, 95, 115),10); controls.addView(refresh, new LinearLayout.LayoutParams(dp(82), dp(54)));
-        Button sos = compactButton("SOS", Color.rgb(180, 22, 22),11); controls.addView(sos, new LinearLayout.LayoutParams(dp(58), dp(54))); root.addView(controls);
+        privacyButton=compactButton("◎ NEARBY",UiKit.SURFACE_HIGH,10);controls.addView(privacyButton,new LinearLayout.LayoutParams(dp(94),dp(54)));
+        Button refresh = compactButton("↻ REFRESH", Color.rgb(0, 95, 115),10); controls.addView(refresh,new LinearLayout.LayoutParams(dp(100),dp(54)));
+        Button sos = compactButton("! SOS", UiKit.RED,11); controls.addView(sos,new LinearLayout.LayoutParams(dp(68),dp(54))); root.addView(controls);
         root.addView(title("RiderLink SOS does not contact 911. Call emergency services when needed.", 10, Color.rgb(150, 160, 164)), new LinearLayout.LayoutParams(-1, dp(34)));
         setContentView(root);
         sharing.setOnCheckedChangeListener((button, checked) -> {
