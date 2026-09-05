@@ -19,8 +19,10 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -43,8 +45,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state); client = new RiderLinkClient(this); locations = (LocationManager) getSystemService(LOCATION_SERVICE);
-        getWindow().getDecorView().setSystemUiVisibility(0);
-        getWindow().setStatusBarColor(Color.rgb(7, 15, 20)); getWindow().setNavigationBarColor(Color.BLACK);
+        Fullscreen.apply(this);
         if (client.signedIn()) showRiderLink(); else showAuthentication();
     }
 
@@ -88,13 +89,13 @@ public class RiderLinkActivity extends Activity implements LocationListener {
 
     private void showRiderLink() {
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackgroundColor(Color.rgb(4, 10, 14));
-        root.setPadding(0, systemBarHeight("status_bar"), 0, systemBarHeight("navigation_bar"));
+        root.setPadding(0, 0, 0, 0);
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL); header.setPadding(dp(10), dp(4), dp(10), dp(4));
         TextView logo = title("RIDERLINK", 22, Color.rgb(0, 229, 255)); logo.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL); header.addView(logo, new LinearLayout.LayoutParams(0, dp(54), 1));
         Button socialButton = button("SOCIAL", Color.rgb(0, 91, 112)); header.addView(socialButton, new LinearLayout.LayoutParams(dp(92), dp(46)));
         Button profileButton = button("PROFILE", Color.rgb(20, 54, 64)); header.addView(profileButton, new LinearLayout.LayoutParams(dp(92), dp(46))); root.addView(header);
         status = title("Location sharing OFF", 13, Color.rgb(255, 176, 40)); root.addView(status, new LinearLayout.LayoutParams(-1, dp(42)));
-        map = new WebView(this); WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
+        map = new WebView(this); map.setLayerType(View.LAYER_TYPE_HARDWARE, null); WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         map.setBackgroundColor(Color.rgb(5, 10, 13)); map.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
         map.setWebViewClient(new android.webkit.WebViewClient() {
@@ -125,19 +126,42 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     }
 
     private void showProfileDialog() {
-        LinearLayout panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(dp(20), 0, dp(20), 0);
-        panel.setBackgroundColor(Color.rgb(8, 14, 18));
-        EditText username = input("Rider name", false), scooter = input("Scooter / bike", false); panel.addView(username); panel.addView(scooter);
-        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Rider profile").setView(panel).setPositiveButton("Save", (d,w) -> {
-            String name = username.getText().toString().trim(); if (name.length() < 3) { toast("Rider name must be at least 3 characters"); return; }
-            client.saveProfile(name, scooter.getText().toString().trim(), sharing != null && sharing.isChecked() ? "nearby" : "invisible", (ok,m,b) -> toast(ok ? "Profile saved" : m));
+        ScrollView scroll=new ScrollView(this);LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(18),dp(8),dp(18),dp(16));panel.setBackgroundColor(Color.rgb(8,14,18));scroll.addView(panel);
+        RiderAvatarView avatar=new RiderAvatarView(this);RiderAvatarView.AvatarSpec spec=new RiderAvatarView.AvatarSpec();avatar.setSpec(spec);panel.addView(avatar,new LinearLayout.LayoutParams(-1,dp(265)));
+        EditText username=input("Rider name",false);panel.addView(username,new LinearLayout.LayoutParams(-1,dp(56)));
+        panel.addView(title("BUILD YOUR RIDER",13,Color.rgb(0,229,255)));
+        Spinner skin=profileSpinner("Skin tone",new String[]{"Porcelain","Light","Warm","Tan","Brown","Deep brown","Ebony","Peach"},panel);
+        Spinner face=profileSpinner("Face",new String[]{"Classic","Smile","Focused","Serious","Glasses","Beard"},panel);
+        Spinner hair=profileSpinner("Hair style",new String[]{"Bald","Close cut","Short","Curls","Side sweep","Spikes","Full curls","Top knot","Locs","Long"},panel);
+        Spinner hairColor=profileSpinner("Hair color",new String[]{"Black","Brown","Auburn","Blonde","Red","Purple","Teal","Silver","Pink","Blue-black"},panel);
+        Spinner outfit=profileSpinner("Clothing color",new String[]{"Black","Blue","Red","Green","Amber","Purple","Pink","White","Brown","Cyan"},panel);
+        Spinner outfitStyle=profileSpinner("Clothing style",new String[]{"Riding jacket","Zipped jacket","Armored jacket"},panel);
+        Spinner helmet=profileSpinner("Helmet",new String[]{"No helmet","Red","Blue","Green","Amber","Purple","White","Black","Orange"},panel);
+        panel.addView(title("SCOOTER GARAGE",13,Color.rgb(0,229,255)));
+        String[] makes={"HHH","Honda","Yamaha","TaoTao","IceBear","Vespa","Kymco","Genuine","Piaggio","SYM","Lance","Wolf","Other / custom"};
+        Spinner make=profileSpinner("Scooter make",makes,panel);EditText model=input("Model / year",false);panel.addView(model,new LinearLayout.LayoutParams(-1,dp(56)));
+        Spinner scooterStyle=profileSpinner("Scooter body",new String[]{"Sport scooter","Touring scooter","Classic moped","Maxi scooter","Mini bike","Custom"},panel);
+        Spinner scooterColor=profileSpinner("Scooter color",new String[]{"Red","Blue","Green","Amber","Purple","White","Black","Orange","Pink","Silver"},panel);
+        String[] upgradeNames={"Big-bore kit","Performance carb / EFI","Variator","Clutch / springs","Performance exhaust","CDI / ignition","Oil cooler","Suspension","Brake upgrade","Lighting","Audio system","Cargo / delivery setup"};
+        CheckBox[] upgrades=new CheckBox[upgradeNames.length];for(int i=0;i<upgradeNames.length;i++){upgrades[i]=new CheckBox(this);upgrades[i].setText(upgradeNames[i]);upgrades[i].setTextColor(Color.WHITE);upgrades[i].setMinHeight(dp(44));panel.addView(upgrades[i]);}
+        EditText custom=input("Other upgrades",false);panel.addView(custom,new LinearLayout.LayoutParams(-1,dp(56)));
+        Pick[] picks={i->spec.skin=i,i->spec.face=i,i->spec.hairStyle=i,i->spec.hairColor=i,i->spec.outfit=i,i->spec.outfitStyle=i,i->spec.helmet=i,i->spec.scooterStyle=i,i->spec.scooterColor=i};
+        Spinner[] avatarSpinners={skin,face,hair,hairColor,outfit,outfitStyle,helmet,scooterStyle,scooterColor};for(int i=0;i<avatarSpinners.length;i++)bind(avatarSpinners[i],picks[i],avatar);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Rider avatar & garage").setView(scroll).setPositiveButton("SAVE PROFILE",(d,w)->{
+            String name=username.getText().toString().trim();if(name.length()<3){toast("Rider name must be at least 3 characters");return;}
+            StringBuilder mods=new StringBuilder();for(int i=0;i<upgrades.length;i++)if(upgrades[i].isChecked()){if(mods.length()>0)mods.append(", ");mods.append(upgradeNames[i]);}if(!custom.getText().toString().trim().isEmpty()){if(mods.length()>0)mods.append(", ");mods.append(custom.getText().toString().trim());}
+            client.saveExtendedProfile(name,sharing!=null&&sharing.isChecked()?"nearby":"invisible",makes[make.getSelectedItemPosition()],model.getText().toString().trim(),mods.toString(),spec.toJson(),(ok,m,b)->toast(ok?"Avatar and scooter saved":m+" • Run the v4 RiderLink SQL migration"));
         }).setNeutralButton("Sign out", (d,w) -> {
             if (sharing != null && sharing.isChecked()) client.goInvisible((ok,m,b) -> { client.signOut(); showAuthentication(); });
             else { client.signOut(); showAuthentication(); }
-        })
-                .setNegativeButton("Cancel", null).create();
-        dialog.setOnShowListener(d->client.getProfile((ok,m,body)->{if(!ok)return;try{org.json.JSONArray list=new org.json.JSONArray(body);if(list.length()>0){org.json.JSONObject p=list.getJSONObject(0);username.setText(p.optString("username"));scooter.setText(p.optString("scooter"));}}catch(Exception ignored){}}));dialog.show();
+        }).setNegativeButton("Cancel",null).create();
+        dialog.setOnShowListener(d->client.getProfile((ok,m,body)->{if(!ok)return;try{org.json.JSONArray list=new org.json.JSONArray(body);if(list.length()>0){org.json.JSONObject p=list.getJSONObject(0);username.setText(p.optString("username"));model.setText(p.optString("scooter_model"));select(make,makes,p.optString("scooter_make","Other / custom"));RiderAvatarView.AvatarSpec loaded=RiderAvatarView.AvatarSpec.fromJson(p.optJSONObject("avatar_config")==null?"{}":p.optJSONObject("avatar_config").toString());spec.skin=loaded.skin;spec.face=loaded.face;spec.hairStyle=loaded.hairStyle;spec.hairColor=loaded.hairColor;spec.outfit=loaded.outfit;spec.outfitStyle=loaded.outfitStyle;spec.helmet=loaded.helmet;spec.scooterStyle=loaded.scooterStyle;spec.scooterColor=loaded.scooterColor;int[] vals={spec.skin,spec.face,spec.hairStyle,spec.hairColor,spec.outfit,spec.outfitStyle,spec.helmet,spec.scooterStyle,spec.scooterColor};for(int i=0;i<avatarSpinners.length;i++)avatarSpinners[i].setSelection(vals[i]);String saved=p.optString("scooter_upgrades","");for(int i=0;i<upgrades.length;i++)upgrades[i].setChecked(saved.toLowerCase().contains(upgradeNames[i].toLowerCase()));avatar.setSpec(spec);}}catch(Exception ignored){}}));dialog.show();
     }
+
+    private interface Pick{void set(int value);}
+    private void bind(Spinner spinner,Pick pick,RiderAvatarView avatar){spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onItemSelected(android.widget.AdapterView<?> p,View v,int i,long id){pick.set(i);avatar.invalidate();}public void onNothingSelected(android.widget.AdapterView<?> p){}});}
+    private Spinner profileSpinner(String label,String[] values,LinearLayout panel){TextView heading=title(label.toUpperCase(),11,Color.rgb(145,175,185));heading.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);panel.addView(heading,new LinearLayout.LayoutParams(-1,dp(32)));Spinner spinner=new Spinner(this);ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,values);spinner.setAdapter(adapter);spinner.setBackgroundColor(Color.rgb(20,39,46));panel.addView(spinner,new LinearLayout.LayoutParams(-1,dp(52)));return spinner;}
+    private void select(Spinner spinner,String[] values,String wanted){for(int i=0;i<values.length;i++)if(values[i].equalsIgnoreCase(wanted)){spinner.setSelection(i);return;}spinner.setSelection(values.length-1);}
 
     private void startLocation() {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) { requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 77); return; }
@@ -197,6 +221,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     @Override public void onProviderDisabled(String provider) { }
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) { super.onRequestPermissionsResult(requestCode, permissions, results); if (requestCode == 77 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) startLocation(); }
     @Override protected void onPause() { super.onPause(); if (sharing != null && sharing.isChecked()) status.setText("Sharing pauses when RiderLink closes"); }
+    @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) Fullscreen.apply(this); }
     @Override protected void onDestroy() { handler.removeCallbacksAndMessages(null); try { locations.removeUpdates(this); } catch (SecurityException ignored) { } if (client != null) client.shutdown(); if (map != null) map.destroy(); super.onDestroy(); }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private int systemBarHeight(String name){int id=getResources().getIdentifier(name,"dimen","android");return id>0?getResources().getDimensionPixelSize(id):0;}
