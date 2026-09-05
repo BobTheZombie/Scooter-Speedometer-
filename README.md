@@ -19,7 +19,8 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Voice Studio for installed natural Android voices, pitch, speed, and spoken preview
 - Rider HUD with live message/call notification badges, spoken sender/message/caller alerts, and high-noise push-to-talk dashboard commands
 - Production UI pass: unified dark Material theme, rounded ripple controls, professional card menus, consistent hierarchy, and vector HUD icons
-- ScooterOS interface: transparent floating HUD, icon-led control center, OS status branding, glass notifications, and elevated cockpit cards
+- Transparent floating HUD, icon-led control center, glass notifications, and elevated cockpit cards
+- Sleek rider-console overhaul with an unbranded transparent HUD, dedicated user/settings controls, account hub, and verified Avaturn entry points
 - Built-in navigation uses a smooth, heading-aware live scooter puck and follow camera
 - RiderLink bottom controls use compact fixed single-line sizing on narrow phones
 - Expanded Delivery Cockpit extracts every detail exposed in DoorDash notifications: restaurant, amount, explicit tip, distance, item count, time, pickup and drop-off text
