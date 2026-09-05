@@ -15,6 +15,7 @@
 
     <application
         android:allowBackup="true"
+        android:hardwareAccelerated="true"
         android:icon="@drawable/ic_launcher"
         android:label="Scooter Speedometer"
         android:theme="@style/AppTheme">
