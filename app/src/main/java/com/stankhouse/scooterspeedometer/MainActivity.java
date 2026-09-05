@@ -109,6 +109,7 @@ public class MainActivity extends Activity implements LocationListener {
         weatherData = weatherRepository.cached();
         weatherAlert = weatherRepository.cachedAlert();
         speedView = new SpeedView(this);
+        speedView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         setContentView(speedView);
         enterImmersive();
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -123,10 +124,7 @@ public class MainActivity extends Activity implements LocationListener {
     }
 
     private void enterImmersive() {
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN |
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        Fullscreen.apply(this);
     }
 
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) enterImmersive(); }
@@ -156,11 +154,11 @@ public class MainActivity extends Activity implements LocationListener {
                 .setNegativeButton("Not now", (dialog, which) ->
                         prefs.edit().putBoolean("weather_provider_consent", false).apply()).show();
     }
-    @Override protected void onPause() { super.onPause(); nightMode.stop(); stopGps(); stopMediaListener(); saveStats(); }
+    @Override protected void onPause() { super.onPause(); nightMode.stop(); stopGps(); stopMediaListener(); saveStats(); if(deliveryCockpit!=null)deliveryCockpit.flushMileage(); }
 
     private void startGps() {
         try {
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 250L, 0f, this);
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 0f, this);
             if (gnssCallback != null) return;
             gnssCallback = new GnssStatus.Callback() {
                 @Override public void onSatelliteStatusChanged(GnssStatus status) {
@@ -606,34 +604,43 @@ public class MainActivity extends Activity implements LocationListener {
             float offerPay = prefs.getFloat("dasher_offer_pay", 0f);
             float offerMiles = prefs.getFloat("dasher_offer_miles", 0f);
             float perMile = prefs.getFloat("dasher_offer_per_mile", 0f);
+            float tip = prefs.getFloat("dasher_offer_tip", 0f);
+            int items = prefs.getInt("dasher_offer_items", 0), minutes = prefs.getInt("dasher_offer_minutes", 0);
+            String restaurant = prefs.getString("dasher_restaurant", title);
+            String pickup = prefs.getString("dasher_pickup", ""), dropoff = prefs.getString("dasher_dropoff", "");
             long age = System.currentTimeMillis() - prefs.getLong("dasher_time", 0L);
             boolean active = (!TextUtils.isEmpty(title) || !TextUtils.isEmpty(body)) && age < 30L * 60L * 1000L;
-            dasherCard.set(w * .025f, h * .255f, w * .975f, h * .375f);
+            dasherCard.set(w * .025f, h * .245f, w * .975f, h * .405f);
             paint.setColor(active ? Color.argb(242, 155, 12, 25) : Color.argb(225, 14, 20, 25));
             c.drawRoundRect(dasherCard, 18f * scale, 18f * scale, paint);
             paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(2f * scale);
             paint.setColor(active ? Color.rgb(255, 70, 82) : Color.rgb(85, 105, 115));
             c.drawRoundRect(dasherCard, 18f * scale, 18f * scale, paint); paint.setStyle(Paint.Style.FILL);
-            text(c, "DASHER COCKPIT", w * .055f, h * .282f, 12f * scale, active ? Color.WHITE : Color.rgb(165,180,188), Paint.Align.LEFT, true);
-            text(c, deliveryCockpit.shiftActive() ? "SHIFT ON" : "SHIFT OFF", w * .945f, h * .282f, 11f * scale,
+            text(c, "DASHER COCKPIT", w * .055f, h * .270f, 12f * scale, active ? Color.WHITE : Color.rgb(165,180,188), Paint.Align.LEFT, true);
+            text(c, deliveryCockpit.shiftActive() ? "SHIFT ON" : "SHIFT OFF", w * .945f, h * .270f, 11f * scale,
                     deliveryCockpit.shiftActive() ? Color.rgb(112,255,145) : Color.rgb(190,195,198), Paint.Align.RIGHT, true);
             if (active) {
-                text(c, ellipsize(title, 38), w * .055f, h * .308f, 15f * scale, Color.WHITE, Paint.Align.LEFT, true);
+                text(c, ellipsize(restaurant, 46), w * .055f, h * .296f, 16f * scale, Color.WHITE, Paint.Align.LEFT, true);
                 int scoreColor = perMile >= 2f ? Color.rgb(105,255,130) : perMile >= 1f ? Color.rgb(255,195,65) : Color.rgb(255,105,105);
                 String metrics = (offerPay > 0 ? String.format(Locale.US, "$%.2f", offerPay) : "PAY --") + "  •  " +
                         (offerMiles > 0 ? String.format(Locale.US, "%.1f MI", offerMiles) : "MI --") + "  •  " +
-                        (perMile > 0 ? String.format(Locale.US, "$%.2f/MI", perMile) : "RATE --");
-                text(c, metrics, w * .055f, h * .337f, 15f * scale, scoreColor, Paint.Align.LEFT, true);
-                text(c, ellipsize(body, 62), w * .055f, h * .360f, 10f * scale, Color.rgb(255,220,220), Paint.Align.LEFT, false);
-                text(c, "OPEN  ›", w * .945f, h * .321f, 13f * scale, Color.WHITE, Paint.Align.RIGHT, true);
+                        (perMile > 0 ? String.format(Locale.US, "$%.2f/MI", perMile) : "RATE --") +
+                        (tip > 0 ? String.format(Locale.US, "  •  TIP $%.2f", tip) : "  •  TIP --");
+                text(c, metrics, w * .055f, h * .322f, 14f * scale, scoreColor, Paint.Align.LEFT, true);
+                String timing = (items > 0 ? items + " ITEMS" : "ITEMS --") + "  •  " + (minutes > 0 ? minutes + " MIN" : "TIME --");
+                text(c, timing, w * .945f, h * .296f, 10f * scale, Color.rgb(255,215,220), Paint.Align.RIGHT, true);
+                text(c, "PICKUP  " + ellipsize(TextUtils.isEmpty(pickup) ? restaurant : pickup, 55), w * .055f, h * .347f,
+                        10f * scale, Color.rgb(235,238,240), Paint.Align.LEFT, false);
+                text(c, "DROP  " + ellipsize(TextUtils.isEmpty(dropoff) ? "Open Dasher for address" : dropoff, 57), w * .055f, h * .369f,
+                        10f * scale, Color.rgb(235,238,240), Paint.Align.LEFT, false);
             } else {
                 text(c, hasMediaAccess() ? "Waiting for DoorDash orders…" : "Tap to grant notification access",
-                        w * .055f, h * .320f, 14f * scale, Color.rgb(175,194,202), Paint.Align.LEFT, false);
+                        w * .055f, h * .315f, 14f * scale, Color.rgb(175,194,202), Paint.Align.LEFT, false);
             }
             text(c, String.format(Locale.US, "TODAY %.1f MI  •  SHIFT %.1f MI / %d MIN  •  %d OFFERS  •  $%.2f OFFERED",
                     deliveryCockpit.dailyMiles(), deliveryCockpit.shiftMiles(), deliveryCockpit.shiftMinutes(),
                     deliveryCockpit.dailyOffers(), deliveryCockpit.dailyOfferValue()),
-                    w * .5f, h * .371f, 9f * scale, Color.rgb(215,225,230), Paint.Align.CENTER, true);
+                    w * .5f, h * .397f, 8.5f * scale, Color.rgb(215,225,230), Paint.Align.CENTER, true);
         }
 
         private void showLayoutMenu() {
@@ -966,7 +973,7 @@ public class MainActivity extends Activity implements LocationListener {
                     Color.argb(42, 255, 255, 255), Color.argb(4, 255, 255, 255), Shader.TileMode.CLAMP));
             c.drawRoundRect(new RectF(panel.left, panel.top, panel.right, panel.top + ph * .38f), 18f * scale, 18f * scale, paint);
             paint.setShader(null); c.restoreToCount(save);
-            postInvalidateDelayed(70L);
+            postInvalidateDelayed((rain || snow || thunder || cloud) ? 100L : 250L);
         }
 
         private void drawWeatherAtmosphere(Canvas c, float w, float h) {
@@ -1040,7 +1047,7 @@ public class MainActivity extends Activity implements LocationListener {
                 bolt.lineTo(w * .70f, h * .37f); bolt.lineTo(w * .54f, h * .66f); c.drawPath(bolt, paint);
                 paint.setStyle(Paint.Style.FILL);
             }
-            postInvalidateDelayed(80L);
+            postInvalidateDelayed((rain || snow || thunder || fog) ? 100L : code <= 3 ? 180L : 500L);
         }
 
         private void drawAlertBanner(Canvas c, float w, float h, float scale) {
@@ -1112,7 +1119,7 @@ public class MainActivity extends Activity implements LocationListener {
                 int darkness = nightMode.oled() ? 205 : 145;
                 paint.setColor(Color.argb(darkness, 0, 0, 0)); c.drawRect(0, 0, w, h, paint);
             }
-            if (isPlaying() && art != null) postInvalidateDelayed(33L);
+            if (isPlaying() && art != null) postInvalidateDelayed(50L);
             slot(dashboardLayout.media, w, h, mediaSlot);
             slot(dashboardLayout.gauge, w, h, gaugeSlot);
             slot(dashboardLayout.navigation, w, h, navigationSlot);
