@@ -14,6 +14,6 @@ public final class UiKit {
     private UiKit(){}
     public static android.graphics.drawable.Drawable rounded(Context context,int fill,float radiusDp,int stroke){GradientDrawable shape=new GradientDrawable();shape.setColor(fill);shape.setCornerRadius(radiusDp*context.getResources().getDisplayMetrics().density);if(stroke!=Color.TRANSPARENT)shape.setStroke(Math.max(1,Math.round(context.getResources().getDisplayMetrics().density)),stroke);return new RippleDrawable(ColorStateList.valueOf(Color.argb(65,255,255,255)),shape,null);}
     public static void button(Button button,int fill){button.setAllCaps(false);button.setSingleLine(true);button.setTextColor(Color.WHITE);button.setTextSize(13);button.setMinWidth(0);button.setMinimumWidth(0);button.setPadding(dp(button,14),0,dp(button,14),0);button.setBackground(rounded(button.getContext(),fill,14,Color.argb(85,255,255,255)));button.setStateListAnimator(null);}
-    public static void card(View view){view.setBackground(rounded(view.getContext(),SURFACE_HIGH,14,Color.rgb(30,62,72)));view.setClickable(true);view.setFocusable(true);}
+    public static void card(View view){view.setBackground(rounded(view.getContext(),SURFACE_HIGH,16,Color.rgb(30,62,72)));view.setClickable(true);view.setFocusable(true);view.setElevation(3f*view.getResources().getDisplayMetrics().density);}
     private static int dp(View view,int value){return Math.round(value*view.getResources().getDisplayMetrics().density);}
 }
