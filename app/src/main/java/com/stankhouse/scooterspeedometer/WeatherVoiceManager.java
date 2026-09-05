@@ -3,11 +3,17 @@ package com.stankhouse.scooterspeedometer;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.Voice;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Locale;
 
 /** Cooldown-aware spoken forecast and official-alert announcer. */
 public class WeatherVoiceManager implements TextToSpeech.OnInitListener {
+    public interface VoicesCallback { void onVoices(List<Voice> voices); }
     private static final long FORECAST_COOLDOWN = 45 * 60 * 1000L;
     private final SharedPreferences prefs;
     private final TextToSpeech speech;
@@ -20,8 +26,27 @@ public class WeatherVoiceManager implements TextToSpeech.OnInitListener {
 
     @Override public void onInit(int status) {
         ready = status == TextToSpeech.SUCCESS;
-        if (ready) speech.setLanguage(Locale.US);
+        if (ready) {
+            speech.setLanguage(Locale.US);
+            applySettings();
+        }
     }
+
+    private void applySettings() {
+        speech.setSpeechRate(prefs.getFloat("rate", .92f));
+        speech.setPitch(prefs.getFloat("pitch", 1f));
+        String wanted=prefs.getString("voice_name","");
+        if(!wanted.isEmpty()&&speech.getVoices()!=null)for(Voice voice:speech.getVoices())if(wanted.equals(voice.getName())){speech.setVoice(voice);break;}
+    }
+
+    public float rate(){return prefs.getFloat("rate",.92f);}
+    public float pitch(){return prefs.getFloat("pitch",1f);}
+    public String voiceName(){Voice v=ready?speech.getVoice():null;return v==null?"System default":v.getName();}
+    public void setRate(float value){prefs.edit().putFloat("rate",value).apply();if(ready)speech.setSpeechRate(value);}
+    public void setPitch(float value){prefs.edit().putFloat("pitch",value).apply();if(ready)speech.setPitch(value);}
+    public void voices(VoicesCallback callback){if(!ready||speech.getVoices()==null){callback.onVoices(Collections.emptyList());return;}List<Voice> list=new ArrayList<>(speech.getVoices());Collections.sort(list,Comparator.comparing(v->v.getLocale().getDisplayName()+v.getName()));callback.onVoices(list);}
+    public void setVoice(Voice voice){if(voice==null)return;prefs.edit().putString("voice_name",voice.getName()).apply();if(ready)speech.setVoice(voice);}
+    public void preview(){if(ready){applySettings();speech.speak("Rider Link voice check. Rain is expected in fifteen minutes.",TextToSpeech.QUEUE_FLUSH,null,"voice_preview");}}
 
     public boolean enabled() { return prefs.getBoolean("enabled", true); }
     public void setEnabled(boolean enabled) {
