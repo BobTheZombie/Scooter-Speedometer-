@@ -7,14 +7,12 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
-import android.view.WindowManager;
 
 /** One edge-to-edge, immersive and hardware-accelerated policy for every app screen. */
 public final class Fullscreen {
     private Fullscreen() { }
     public static void apply(Activity activity) {
         Window window = activity.getWindow();
-        window.addFlags(WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED);
         window.setStatusBarColor(Color.TRANSPARENT); window.setNavigationBarColor(Color.TRANSPARENT);
         if (Build.VERSION.SDK_INT >= 30) {
             window.setDecorFitsSystemWindows(false);
