@@ -19,7 +19,7 @@ public class RiderAvatarView extends View {
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
     private AvatarSpec spec = new AvatarSpec();
 
-    public RiderAvatarView(Context context) { super(context); setLayerType(View.LAYER_TYPE_HARDWARE, null); }
+    public RiderAvatarView(Context context) { super(context); setLayerType(View.LAYER_TYPE_SOFTWARE, null); }
     public void setSpec(AvatarSpec value) { spec = value == null ? new AvatarSpec() : value; invalidate(); }
     public AvatarSpec getSpec() { return spec; }
 
