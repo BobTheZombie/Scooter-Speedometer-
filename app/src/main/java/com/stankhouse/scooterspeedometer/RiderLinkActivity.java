@@ -95,7 +95,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         Button socialButton = button("SOCIAL", Color.rgb(0, 91, 112)); header.addView(socialButton, new LinearLayout.LayoutParams(dp(92), dp(46)));
         Button profileButton = button("PROFILE", Color.rgb(20, 54, 64)); header.addView(profileButton, new LinearLayout.LayoutParams(dp(92), dp(46))); root.addView(header);
         status = title("Location sharing OFF", 13, Color.rgb(255, 176, 40)); root.addView(status, new LinearLayout.LayoutParams(-1, dp(42)));
-        map = new WebView(this); map.setLayerType(View.LAYER_TYPE_HARDWARE, null); WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
+        map = new WebView(this); map.setLayerType(View.LAYER_TYPE_SOFTWARE, null); WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         map.setBackgroundColor(Color.rgb(5, 10, 13)); map.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
         map.setWebViewClient(new android.webkit.WebViewClient() {
