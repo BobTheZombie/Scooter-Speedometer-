@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowNoTitle">true</item>
@@ -8,5 +8,16 @@
         <item name="android:navigationBarColor">#05080B</item>
         <item name="android:statusBarColor">#05080B</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowBackground">#04090D</item>
+        <item name="android:windowContentTransitions">true</item>
+        <item name="android:alertDialogTheme">@style/AppDialogTheme</item>
+    </style>
+    <style name="AppDialogTheme" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#00D3EE</item>
+        <item name="android:windowBackground">#0A151B</item>
+        <item name="android:textColorPrimary">#F4FAFC</item>
+        <item name="android:textColorSecondary">#9DB3BC</item>
     </style>
 </resources>
