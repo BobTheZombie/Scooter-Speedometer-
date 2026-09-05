@@ -13,6 +13,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.speech.tts.TextToSpeech;
 import android.view.Gravity;
+import android.view.View;
 import android.view.WindowManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -54,12 +55,14 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
+        Fullscreen.apply(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         destinationQuery = getIntent().getStringExtra("destination");
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         speech = new TextToSpeech(this, this);
         FrameLayout root = new FrameLayout(this);
         map = new WebView(this);
+        map.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true); settings.setAllowFileAccess(true);
         map.setWebViewClient(new WebViewClient() {
@@ -169,6 +172,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private String read(HttpURLConnection connection) throws Exception { BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream())); StringBuilder out = new StringBuilder(); String line; while ((line = reader.readLine()) != null) out.append(line); reader.close(); return out.toString(); }
     private void showError(String message) { instruction.setText(message); new AlertDialog.Builder(this).setTitle("Navigation").setMessage(message).setPositiveButton("Close", (d,w) -> finish()).show(); }
     @Override public void onInit(int status) { speechReady = status == TextToSpeech.SUCCESS; if (speechReady) speech.setLanguage(Locale.US); }
+    @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) Fullscreen.apply(this); }
     @Override protected void onDestroy() { try { locationManager.removeUpdates(this); } catch (Exception ignored) {} network.shutdownNow(); speech.stop(); speech.shutdown(); map.destroy(); super.onDestroy(); }
     @Override public void onProviderEnabled(String provider) { }
     @Override public void onProviderDisabled(String provider) { }
