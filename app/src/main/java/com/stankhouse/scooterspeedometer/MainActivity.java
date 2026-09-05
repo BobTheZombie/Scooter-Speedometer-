@@ -168,17 +168,24 @@ public class MainActivity extends Activity implements LocationListener {
 
     private void showWeatherSettings() {
         String enabled=prefs.getBoolean("weather_provider_consent",false)?"Enabled":"Disabled";
-        String[] items={"Live weather  •  "+enabled,"Provider  •  "+weatherRepository.providerName(),"Location  •  "+weatherRepository.locationName(),"Refresh  •  "+(weatherRepository.refreshMs()/60000L)+" minute(s)","Refresh now"};
+        String keyState=prefs.getString("accuweather_api_key","").isEmpty()?"Not configured":"Configured";
+        String[] items={"Live weather  •  "+enabled,"Provider  •  "+weatherRepository.providerName(),"Location  •  "+weatherRepository.locationName(),"Refresh  •  "+(weatherRepository.refreshMs()/60000L)+" minute(s)","AccuWeather API key  •  "+keyState,"Refresh now"};
         new AlertDialog.Builder(this).setTitle("Live weather & Sense background").setItems(items,(d,which)->{
             if(which==0){boolean next=!prefs.getBoolean("weather_provider_consent",false);prefs.edit().putBoolean("weather_provider_consent",next).apply();if(next)requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);else speedView.invalidate();}
             else if(which==1)showWeatherProviderPicker();
             else if(which==2)showWeatherLocationPicker();
             else if(which==3)showWeatherRefreshPicker();
+            else if(which==4)showAccuWeatherKeyDialog();
             else requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);
         }).setNegativeButton("Done",null).show();
     }
 
-    private void showWeatherProviderPicker(){String[] choices={"Automatic fallback","Open-Meteo","MET Norway"};new AlertDialog.Builder(this).setTitle("Weather provider").setSingleChoiceItems(choices,weatherRepository.provider(),(d,which)->{prefs.edit().putInt("weather_provider",which).apply();d.dismiss();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}).setNegativeButton("Back",(d,w)->showWeatherSettings()).show();}
+    private void showWeatherProviderPicker(){String[] choices={"Automatic fallback","Open-Meteo","MET Norway","AccuWeather (API key required)"};new AlertDialog.Builder(this).setTitle("Weather provider").setSingleChoiceItems(choices,weatherRepository.provider(),(d,which)->{d.dismiss();if(which==3&&prefs.getString("accuweather_api_key","").isEmpty()){showAccuWeatherKeyDialog();return;}prefs.edit().putInt("weather_provider",which).apply();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}).setNegativeButton("Back",(d,w)->showWeatherSettings()).show();}
+    private void showAccuWeatherKeyDialog(){EditText input=weatherInput("AccuWeather API key");input.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);input.setText(prefs.getString("accuweather_api_key",""));new AlertDialog.Builder(this).setTitle("AccuWeather access").setMessage("Enter your own AccuWeather developer key. AccuWeather requires attribution and an appropriate license for vehicle use. AccuWeather refresh is limited to 10 minutes to protect your quota.").setView(input).setPositiveButton("SAVE & USE",(d,w)->{String key=input.getText().toString().trim();if(key.isEmpty()){android.widget.Toast.makeText(this,"API key not saved",android.widget.Toast.LENGTH_LONG).show();return;}prefs.edit().putString("accuweather_api_key",key).putInt("weather_provider",3).apply();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}).setNeutralButton("REMOVE KEY",(d,w)->{prefs.edit().remove("accuweather_api_key").putInt("weather_provider",0).apply();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}).setNegativeButton("Cancel",null).show();}
+
+    private void showVoiceStudio(){String[] items={"Voice  •  "+weatherVoice.voiceName(),"Speech speed  •  "+Math.round(weatherVoice.rate()*100)+"%","Pitch  •  "+Math.round(weatherVoice.pitch()*100)+"%","Preview voice","Open Android voice downloads"};new AlertDialog.Builder(this).setTitle("Voice Studio").setItems(items,(d,which)->{if(which==0)showVoicePicker();else if(which==1)showVoiceSlider(true);else if(which==2)showVoiceSlider(false);else if(which==3)weatherVoice.preview();else{try{startActivity(new Intent("com.android.settings.TTS_SETTINGS"));}catch(Exception e){startActivity(new Intent(Settings.ACTION_SETTINGS));}}}).setNegativeButton("Done",null).show();}
+    private void showVoicePicker(){weatherVoice.voices(voices->{if(voices.isEmpty()){android.widget.Toast.makeText(this,"No voices found. Install voices in Android Text-to-speech settings.",android.widget.Toast.LENGTH_LONG).show();return;}String[] labels=new String[voices.size()];for(int i=0;i<voices.size();i++){android.speech.tts.Voice v=voices.get(i);labels[i]=v.getLocale().getDisplayName()+"  •  "+v.getName()+(v.isNetworkConnectionRequired()?"  [online]":"  [offline]");}new AlertDialog.Builder(this).setTitle("Installed voices").setItems(labels,(d,which)->{weatherVoice.setVoice(voices.get(which));weatherVoice.preview();}).setNegativeButton("Back",(d,w)->showVoiceStudio()).show();});}
+    private void showVoiceSlider(boolean rate){android.widget.SeekBar bar=new android.widget.SeekBar(this);bar.setMax(100);float current=rate?weatherVoice.rate():weatherVoice.pitch();bar.setProgress(Math.round((current-.5f)*100));bar.setPadding(30,20,30,20);new AlertDialog.Builder(this).setTitle(rate?"Speech speed":"Voice pitch").setMessage("50% to 150% — 90–100% usually sounds most natural.").setView(bar).setPositiveButton("SAVE",(d,w)->{float value=.5f+bar.getProgress()/100f;if(rate)weatherVoice.setRate(value);else weatherVoice.setPitch(value);weatherVoice.preview();}).setNegativeButton("Cancel",null).show();}
     private void showWeatherRefreshPicker(){String[] choices={"Every minute (live)","Every 2 minutes","Every 5 minutes","Every 10 minutes"};new AlertDialog.Builder(this).setTitle("Weather refresh rate").setSingleChoiceItems(choices,Math.max(0,Math.min(3,prefs.getInt("weather_refresh",0))),(d,which)->{prefs.edit().putInt("weather_refresh",which).apply();d.dismiss();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}).setNegativeButton("Back",(d,w)->showWeatherSettings()).show();}
     private void showWeatherLocationPicker(){String[] choices={"Use live GPS location","Search city or ZIP code","Enter latitude / longitude"};new AlertDialog.Builder(this).setTitle("Weather location").setItems(choices,(d,which)->{if(which==0){prefs.edit().putBoolean("weather_custom_location",false).apply();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}else if(which==1)showWeatherLocationSearch();else showWeatherCoordinates();}).setNegativeButton("Back",(d,w)->showWeatherSettings()).show();}
     private EditText weatherInput(String hint){EditText input=new EditText(this);input.setHint(hint);input.setSingleLine(true);input.setTextColor(Color.WHITE);input.setHintTextColor(Color.GRAY);input.setPadding(24,8,24,8);return input;}
@@ -562,13 +569,14 @@ public class MainActivity extends Activity implements LocationListener {
 
         private void showDashboardCustomizer() {
             String[] choices = {"▦  Layout & presets", "◉  Appearance & media",
-                    "☾  Night & road awareness", "▣  Delivery / Dasher mode", "▣  Saved profiles"};
+                    "☾  Night & road awareness", "♫  Voice & spoken alerts", "▣  Delivery / Dasher mode", "▣  Saved profiles"};
             new AlertDialog.Builder(MainActivity.this).setTitle("Customize dashboard")
                     .setItems(choices, (dialog, which) -> {
                         if (which == 0) showLayoutMenu();
                         else if (which == 1) showAppearanceMenu();
                         else if (which == 2) showRoadSettings();
-                        else if (which == 3) showDasherSettings();
+                        else if (which == 3) showVoiceStudio();
+                        else if (which == 4) showDasherSettings();
                         else showProfilesMenu();
                     }).show();
         }
