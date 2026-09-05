@@ -106,12 +106,12 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         });
         map.loadUrl("file:///android_asset/riderlink_map.html"); root.addView(map, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout controls = new LinearLayout(this); controls.setPadding(dp(7), dp(5), dp(7), dp(5)); controls.setGravity(Gravity.CENTER);
-        TextView liveLabel=title("LIVE",16,Color.WHITE);controls.addView(liveLabel,new LinearLayout.LayoutParams(dp(56),dp(58)));
+        TextView liveLabel=title("LIVE",15,Color.WHITE);controls.addView(liveLabel,new LinearLayout.LayoutParams(dp(48),dp(58)));
         sharing = new Switch(this); sharing.setShowText(false); sharing.setGravity(Gravity.CENTER); sharing.setChecked(getSharedPreferences("riderlink_session",MODE_PRIVATE).getBoolean("live",false));
-        controls.addView(sharing, new LinearLayout.LayoutParams(dp(64), dp(58)));
-        privacyButton=button("NEARBY",Color.rgb(18,46,55));privacyButton.setSingleLine(true);privacyButton.setTextSize(11);controls.addView(privacyButton,new LinearLayout.LayoutParams(dp(94),dp(54)));
-        Button refresh = button("REFRESH", Color.rgb(0, 95, 115)); controls.addView(refresh, new LinearLayout.LayoutParams(0, dp(54), 1));
-        Button sos = button("SOS", Color.rgb(180, 22, 22)); controls.addView(sos, new LinearLayout.LayoutParams(0, dp(54), .75f)); root.addView(controls);
+        controls.addView(sharing, new LinearLayout.LayoutParams(dp(50), dp(58)));
+        privacyButton=compactButton("NEARBY",Color.rgb(18,46,55),10);controls.addView(privacyButton,new LinearLayout.LayoutParams(dp(78),dp(54)));
+        Button refresh = compactButton("REFRESH", Color.rgb(0, 95, 115),10); controls.addView(refresh, new LinearLayout.LayoutParams(dp(82), dp(54)));
+        Button sos = compactButton("SOS", Color.rgb(180, 22, 22),11); controls.addView(sos, new LinearLayout.LayoutParams(dp(58), dp(54))); root.addView(controls);
         root.addView(title("RiderLink SOS does not contact 911. Call emergency services when needed.", 10, Color.rgb(150, 160, 164)), new LinearLayout.LayoutParams(-1, dp(34)));
         setContentView(root);
         sharing.setOnCheckedChangeListener((button, checked) -> {
@@ -226,4 +226,5 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private int systemBarHeight(String name){int id=getResources().getIdentifier(name,"dimen","android");return id>0?getResources().getDimensionPixelSize(id):0;}
     private void toast(String value) { Toast.makeText(this, value, Toast.LENGTH_LONG).show(); }
+    private Button compactButton(String label,int color,float size){Button b=button(label,color);b.setSingleLine(true);b.setTextSize(size);b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(dp(2),0,dp(2),0);return b;}
 }
