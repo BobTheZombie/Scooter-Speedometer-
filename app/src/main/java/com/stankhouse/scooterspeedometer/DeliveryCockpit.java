@@ -14,7 +14,15 @@ import java.util.regex.Pattern;
 public class DeliveryCockpit {
     private static final Pattern PAY = Pattern.compile("\\$\\s*([0-9]+(?:\\.[0-9]{1,2})?)");
     private static final Pattern MILES = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)\\s*(?:mi|mile|miles)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TIP = Pattern.compile("(?:tip|customer tip)\\s*[:+$-]*\\s*\\$?([0-9]+(?:\\.[0-9]{1,2})?)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ITEMS = Pattern.compile("([0-9]+)\\s*items?\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern MINUTES = Pattern.compile("([0-9]+)\\s*(?:min|mins|minutes)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern PICKUP = Pattern.compile("(?:pickup|pick up)(?: at| from|:)\\s*([^•|\\n]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern DROPOFF = Pattern.compile("(?:dropoff|drop off|deliver to)(?: at|:)??\\s*([^•|\\n]+)", Pattern.CASE_INSENSITIVE);
     private final SharedPreferences prefs;
+    private Location lastMileageFix;
+    private float pendingMeters;
+    private long lastMileageFlush;
 
     public DeliveryCockpit(Context context) {
         prefs = context.getSharedPreferences("speedometer", Context.MODE_PRIVATE);
@@ -26,7 +34,20 @@ public class DeliveryCockpit {
         String all = title + "  " + body + "  " + sub;
         double pay = number(PAY.matcher(all));
         double miles = number(MILES.matcher(all));
+        double tip = number(TIP.matcher(all));
+        int items = integer(ITEMS.matcher(all));
+        int minutes = integer(MINUTES.matcher(all));
+        String pickup = group(PICKUP.matcher(all));
+        String dropoff = group(DROPOFF.matcher(all));
+        String restaurant = title;
+        if (restaurant.toLowerCase(Locale.US).contains("doordash") || restaurant.toLowerCase(Locale.US).contains("new offer")) {
+            restaurant = !pickup.isEmpty() ? pickup : group(Pattern.compile("(?:from|at)\\s+([^•|,\\n]+)", Pattern.CASE_INSENSITIVE).matcher(all));
+        }
         p.edit().putFloat("dasher_offer_pay", (float) pay).putFloat("dasher_offer_miles", (float) miles)
+                .putFloat("dasher_offer_tip", (float) tip).putInt("dasher_offer_items", items)
+                .putInt("dasher_offer_minutes", minutes).putString("dasher_restaurant", clean(restaurant))
+                .putString("dasher_pickup", clean(pickup)).putString("dasher_dropoff", clean(dropoff))
+                .putString("dasher_offer_raw", clean(all))
                 .putFloat("dasher_offer_per_mile", miles > 0 ? (float) (pay / miles) : 0f).apply();
         DeliveryCockpit cockpit = new DeliveryCockpit(context);
         if (!key.equals(p.getString("dasher_last_counted_key", "")) && (pay > 0 || miles > 0)) {
@@ -40,6 +61,12 @@ public class DeliveryCockpit {
         if (!matcher.find()) return 0;
         try { return Double.parseDouble(matcher.group(1)); } catch (Exception ignored) { return 0; }
     }
+    private static int integer(Matcher matcher) {
+        if (!matcher.find()) return 0;
+        try { return Integer.parseInt(matcher.group(1)); } catch (Exception ignored) { return 0; }
+    }
+    private static String group(Matcher matcher) { return matcher.find() ? matcher.group(1) : ""; }
+    private static String clean(String value) { return value == null ? "" : value.trim().replaceAll("\\s+", " "); }
 
     private void ensureToday() {
         String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
@@ -53,6 +80,7 @@ public class DeliveryCockpit {
     public void setShiftActive(boolean active) {
         ensureToday();
         boolean was = shiftActive();
+        if (!active) flushMileage();
         SharedPreferences.Editor edit = prefs.edit().putBoolean("dasher_shift_active", active)
                 .remove("dasher_mileage_lat").remove("dasher_mileage_lon").remove("dasher_mileage_time");
         if (active && !was) edit.putFloat("dasher_shift_meters", 0f).putLong("dasher_shift_started", System.currentTimeMillis());
@@ -63,25 +91,25 @@ public class DeliveryCockpit {
     public void updateMileage(Location location) {
         ensureToday();
         if (!shiftActive() || location == null || location.getAccuracy() > 45f) return;
-        long previousTime = prefs.getLong("dasher_mileage_time", 0L);
-        if (prefs.contains("dasher_mileage_lat") && previousTime > 0) {
-            Location previous = new Location("delivery-log");
-            previous.setLatitude(Double.longBitsToDouble(prefs.getLong("dasher_mileage_lat", 0L)));
-            previous.setLongitude(Double.longBitsToDouble(prefs.getLong("dasher_mileage_lon", 0L)));
-            float distance = previous.distanceTo(location);
-            long dt = Math.abs(location.getTime() - previousTime);
+        if (lastMileageFix != null) {
+            float distance = lastMileageFix.distanceTo(location);
+            long dt = Math.abs(location.getTime() - lastMileageFix.getTime());
             if (dt <= 30000L && distance >= 1f && distance < 300f) {
-                prefs.edit().putFloat("dasher_daily_meters", prefs.getFloat("dasher_daily_meters", 0f) + distance)
-                        .putFloat("dasher_shift_meters", prefs.getFloat("dasher_shift_meters", 0f) + distance).apply();
+                pendingMeters += distance;
             }
         }
-        prefs.edit().putLong("dasher_mileage_lat", Double.doubleToRawLongBits(location.getLatitude()))
-                .putLong("dasher_mileage_lon", Double.doubleToRawLongBits(location.getLongitude()))
-                .putLong("dasher_mileage_time", location.getTime()).apply();
+        lastMileageFix = new Location(location);
+        if (System.currentTimeMillis() - lastMileageFlush >= 15000L) flushMileage();
     }
 
-    public double dailyMiles() { ensureToday(); return prefs.getFloat("dasher_daily_meters", 0f) / 1609.344; }
-    public double shiftMiles() { return prefs.getFloat("dasher_shift_meters", 0f) / 1609.344; }
+    public void flushMileage() {
+        if (pendingMeters > 0) prefs.edit().putFloat("dasher_daily_meters", prefs.getFloat("dasher_daily_meters", 0f) + pendingMeters)
+                .putFloat("dasher_shift_meters", prefs.getFloat("dasher_shift_meters", 0f) + pendingMeters).apply();
+        pendingMeters = 0; lastMileageFlush = System.currentTimeMillis();
+    }
+
+    public double dailyMiles() { ensureToday(); return (prefs.getFloat("dasher_daily_meters", 0f)+pendingMeters) / 1609.344; }
+    public double shiftMiles() { return (prefs.getFloat("dasher_shift_meters", 0f)+pendingMeters) / 1609.344; }
     public int dailyOffers() { ensureToday(); return prefs.getInt("dasher_daily_offers", 0); }
     public double dailyOfferValue() { ensureToday(); return prefs.getFloat("dasher_daily_offer_value", 0f); }
     public long shiftMinutes() {
