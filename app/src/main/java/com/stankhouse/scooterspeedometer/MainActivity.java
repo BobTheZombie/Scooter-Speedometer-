@@ -948,7 +948,7 @@ public class MainActivity extends Activity implements LocationListener {
                 for (int i = 0; i < 4; i++) {
                     float x = panel.left - pw * .15f + (float) ((i * pw * .34f + now / (18f + i * 4f)) % (pw * 1.3f));
                     float y = panel.top + ph * (.25f + (i % 2) * .24f);
-                    c.drawCircle(x, y, ph * .18f, paint); c.drawCircle(x + ph * .15f, y, ph * .14f, paint);
+                    c.drawOval(new RectF(x-ph*.20f,y-ph*.12f,x+ph*.36f,y+ph*.13f),paint);
                 }
             }
             if (rain || thunder) {
@@ -973,7 +973,6 @@ public class MainActivity extends Activity implements LocationListener {
                     Color.argb(42, 255, 255, 255), Color.argb(4, 255, 255, 255), Shader.TileMode.CLAMP));
             c.drawRoundRect(new RectF(panel.left, panel.top, panel.right, panel.top + ph * .38f), 18f * scale, 18f * scale, paint);
             paint.setShader(null); c.restoreToCount(save);
-            postInvalidateDelayed((rain || snow || thunder || cloud) ? 100L : 250L);
         }
 
         private void drawWeatherAtmosphere(Canvas c, float w, float h) {
@@ -1006,12 +1005,12 @@ public class MainActivity extends Activity implements LocationListener {
             }
 
             if (code >= 1 && code <= 3 || rain || thunder) {
-                paint.setColor(Color.argb(55, 225, 238, 245));
+                paint.setColor(Color.argb(38, 225, 238, 245));
                 for (int i = 0; i < 7; i++) {
                     float x = (float) ((i * w * .24 + now * (.006 + i * .0007)) % (w + w * .35)) - w * .18f;
                     float y = h * (.16f + (i % 3) * .12f);
                     float r = w * (.09f + (i % 2) * .025f);
-                    c.drawCircle(x, y, r, paint); c.drawCircle(x + r * .7f, y + r * .05f, r * .8f, paint);
+                    c.drawOval(new RectF(x-r,y-r*.48f,x+r*1.55f,y+r*.55f),paint);
                 }
             }
 
@@ -1047,7 +1046,13 @@ public class MainActivity extends Activity implements LocationListener {
                 bolt.lineTo(w * .70f, h * .37f); bolt.lineTo(w * .54f, h * .66f); c.drawPath(bolt, paint);
                 paint.setStyle(Paint.Style.FILL);
             }
-            postInvalidateDelayed((rain || snow || thunder || fog) ? 100L : code <= 3 ? 180L : 500L);
+        }
+
+        private boolean weatherAnimationActive() {
+            if (weatherData == null) return false;
+            int code=weatherData.weatherCode;
+            return code <= 3 || code == 45 || code == 48 ||
+                    (code >= 51 && code <= 86) || code >= 95;
         }
 
         private void drawAlertBanner(Canvas c, float w, float h, float scale) {
@@ -1207,6 +1212,7 @@ public class MainActivity extends Activity implements LocationListener {
             drawRoadAwareness(c, w, h, scale, shownMph);
             if (dashboardTheme == 1) drawInfernoFrames(c, scale);
             if (editingDashboard) drawEditorOverlay(c, scale);
+            if (weatherAnimationActive()) postInvalidateOnAnimation();
         }
 
         private void drawEditorOverlay(Canvas c, float scale) {
