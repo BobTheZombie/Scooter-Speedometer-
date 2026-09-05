@@ -138,6 +138,8 @@ public class MainActivity extends Activity implements LocationListener {
             weatherConsentPrompted = true;
             speedView.post(this::showWeatherProviderConsent);
         }
+        if (prefs.getBoolean("weather_provider_consent", false) && weatherRepository.customLocation())
+            speedView.post(() -> requestWeather(0, 0, false));
         if (navigationPermissionPending && Settings.canDrawOverlays(this)) {
             navigationPermissionPending = false;
             speedView.post(this::showDestinationDialog);
@@ -150,10 +152,39 @@ public class MainActivity extends Activity implements LocationListener {
                 .setPositiveButton("Enable live weather", (dialog, which) -> {
                     prefs.edit().putBoolean("weather_provider_consent", true).apply();
                     lastWeatherRequest = 0L;
+                    if (weatherRepository.customLocation()) requestWeather(0, 0, true);
                 })
                 .setNegativeButton("Not now", (dialog, which) ->
                         prefs.edit().putBoolean("weather_provider_consent", false).apply()).show();
     }
+
+    private void requestWeather(double gpsLatitude,double gpsLongitude,boolean force) {
+        if(!prefs.getBoolean("weather_provider_consent",false))return;
+        if(force){weatherRepository.clearCache();weatherData=null;weatherAlert=null;}
+        lastWeatherRequest=SystemClock.elapsedRealtime();
+        weatherRepository.update(gpsLatitude,gpsLongitude,data->{weatherData=data;weatherVoice.announceForecast(data);speedView.invalidate();});
+        weatherRepository.updateAlerts(gpsLatitude,gpsLongitude,alert->{weatherAlert=alert;weatherVoice.announceAlert(alert);speedView.invalidate();});
+    }
+
+    private void showWeatherSettings() {
+        String enabled=prefs.getBoolean("weather_provider_consent",false)?"Enabled":"Disabled";
+        String[] items={"Live weather  •  "+enabled,"Provider  •  "+weatherRepository.providerName(),"Location  •  "+weatherRepository.locationName(),"Refresh  •  "+(weatherRepository.refreshMs()/60000L)+" minute(s)","Refresh now"};
+        new AlertDialog.Builder(this).setTitle("Live weather & Sense background").setItems(items,(d,which)->{
+            if(which==0){boolean next=!prefs.getBoolean("weather_provider_consent",false);prefs.edit().putBoolean("weather_provider_consent",next).apply();if(next)requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);else speedView.invalidate();}
+            else if(which==1)showWeatherProviderPicker();
+            else if(which==2)showWeatherLocationPicker();
+            else if(which==3)showWeatherRefreshPicker();
+            else requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);
+        }).setNegativeButton("Done",null).show();
+    }
+
+    private void showWeatherProviderPicker(){String[] choices={"Automatic fallback","Open-Meteo","MET Norway"};new AlertDialog.Builder(this).setTitle("Weather provider").setSingleChoiceItems(choices,weatherRepository.provider(),(d,which)->{prefs.edit().putInt("weather_provider",which).apply();d.dismiss();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}).setNegativeButton("Back",(d,w)->showWeatherSettings()).show();}
+    private void showWeatherRefreshPicker(){String[] choices={"Every minute (live)","Every 2 minutes","Every 5 minutes","Every 10 minutes"};new AlertDialog.Builder(this).setTitle("Weather refresh rate").setSingleChoiceItems(choices,Math.max(0,Math.min(3,prefs.getInt("weather_refresh",0))),(d,which)->{prefs.edit().putInt("weather_refresh",which).apply();d.dismiss();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}).setNegativeButton("Back",(d,w)->showWeatherSettings()).show();}
+    private void showWeatherLocationPicker(){String[] choices={"Use live GPS location","Search city or ZIP code","Enter latitude / longitude"};new AlertDialog.Builder(this).setTitle("Weather location").setItems(choices,(d,which)->{if(which==0){prefs.edit().putBoolean("weather_custom_location",false).apply();requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);}else if(which==1)showWeatherLocationSearch();else showWeatherCoordinates();}).setNegativeButton("Back",(d,w)->showWeatherSettings()).show();}
+    private EditText weatherInput(String hint){EditText input=new EditText(this);input.setHint(hint);input.setSingleLine(true);input.setTextColor(Color.WHITE);input.setHintTextColor(Color.GRAY);input.setPadding(24,8,24,8);return input;}
+    private void saveWeatherLocation(String name,double lat,double lon){prefs.edit().putBoolean("weather_custom_location",true).putString("weather_custom_name",name).putLong("weather_custom_lat",Double.doubleToRawLongBits(lat)).putLong("weather_custom_lon",Double.doubleToRawLongBits(lon)).apply();requestWeather(0,0,true);}
+    private void showWeatherLocationSearch(){EditText input=weatherInput("City, state or ZIP code");new AlertDialog.Builder(this).setTitle("Search weather location").setView(input).setPositiveButton("SEARCH",(d,w)->{String q=input.getText().toString().trim();if(q.isEmpty())return;android.widget.Toast.makeText(this,"Finding "+q+"…",android.widget.Toast.LENGTH_SHORT).show();weatherRepository.geocode(q,(ok,label,lat,lon)->{if(ok){saveWeatherLocation(label,lat,lon);android.widget.Toast.makeText(this,"Weather location: "+label,android.widget.Toast.LENGTH_LONG).show();}else android.widget.Toast.makeText(this,"Location not found",android.widget.Toast.LENGTH_LONG).show();});}).setNegativeButton("Cancel",null).show();}
+    private void showWeatherCoordinates(){LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(24,8,24,8);EditText lat=weatherInput("Latitude, e.g. 42.2917"),lon=weatherInput("Longitude, e.g. -85.5872");lat.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL|android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);lon.setInputType(lat.getInputType());panel.addView(lat);panel.addView(lon);new AlertDialog.Builder(this).setTitle("Custom coordinates").setView(panel).setPositiveButton("USE LOCATION",(d,w)->{try{double a=Double.parseDouble(lat.getText().toString()),o=Double.parseDouble(lon.getText().toString());if(a < -90||a>90||o < -180||o>180)throw new Exception();saveWeatherLocation(String.format(Locale.US,"%.3f, %.3f",a,o),a,o);}catch(Exception e){android.widget.Toast.makeText(this,"Enter valid latitude and longitude",android.widget.Toast.LENGTH_LONG).show();}}).setNegativeButton("Cancel",null).show();}
     @Override protected void onPause() { super.onPause(); nightMode.stop(); stopGps(); stopMediaListener(); saveStats(); if(deliveryCockpit!=null)deliveryCockpit.flushMileage(); }
 
     private void startGps() {
@@ -335,19 +366,8 @@ public class MainActivity extends Activity implements LocationListener {
         roadAwareness.update(location, smoothedMps);
         deliveryCockpit.updateMileage(location);
         if (prefs.getBoolean("weather_provider_consent", false) &&
-                SystemClock.elapsedRealtime() - lastWeatherRequest > 60000L) {
-            lastWeatherRequest = SystemClock.elapsedRealtime();
-            weatherRepository.update(location.getLatitude(), location.getLongitude(), data -> {
-                weatherData = data;
-                weatherVoice.announceForecast(data);
-                speedView.invalidate();
-            });
-            weatherRepository.updateAlerts(location.getLatitude(), location.getLongitude(), alert -> {
-                weatherAlert = alert;
-                weatherVoice.announceAlert(alert);
-                speedView.invalidate();
-            });
-        }
+                SystemClock.elapsedRealtime() - lastWeatherRequest > weatherRepository.refreshMs())
+            requestWeather(location.getLatitude(),location.getLongitude(),false);
         speedView.accuracy = location.getAccuracy();
         speedView.invalidate();
     }
@@ -677,7 +697,7 @@ public class MainActivity extends Activity implements LocationListener {
                             .setSingleChoiceItems(styles, dashboardLayout.gaugeStyle,
                                     (d, item) -> { dashboardLayout.gaugeStyle = item; saveDashboard(); invalidate(); d.dismiss(); }).show();
                 } else if (which == 4) showWeatherSkinPicker();
-                else showWeatherProviderConsent();
+                else showWeatherSettings();
             }).setNegativeButton("Back", (dialog, which) -> showDashboardCustomizer()).show();
         }
 
@@ -910,7 +930,7 @@ public class MainActivity extends Activity implements LocationListener {
                         left + pw * .68f, top + ph * .78f, 11f * scale * panelScale,
                         secondary, Paint.Align.LEFT, false);
                 long ageMinutes = Math.max(0, (System.currentTimeMillis() - weatherData.updatedAt) / 60000L);
-                text(c, (ageMinutes < 2 ? "LIVE" : ageMinutes + "m ago") + " • OPEN-METEO",
+                text(c, (ageMinutes < 2 ? "LIVE" : ageMinutes + "m ago") + " • " + weatherRepository.providerName(),
                         panel.right - pw * .04f, panel.bottom - ph * .06f, 7f * scale * panelScale,
                         secondary, Paint.Align.RIGHT, true);
             }
