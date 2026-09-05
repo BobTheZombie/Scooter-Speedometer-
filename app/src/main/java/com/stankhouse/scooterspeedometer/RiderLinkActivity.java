@@ -39,12 +39,13 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     private TextView status;
     private boolean mapReady;
     private String lastSosSeen = "";
+    private boolean openProfileRequested;
     private final Runnable publish = new Runnable() {
         @Override public void run() { if (fix != null) refreshNearby(); handler.postDelayed(this, 10000L); }
     };
 
     @Override protected void onCreate(Bundle state) {
-        super.onCreate(state); client = new RiderLinkClient(this); locations = (LocationManager) getSystemService(LOCATION_SERVICE);
+        super.onCreate(state); client = new RiderLinkClient(this); locations = (LocationManager) getSystemService(LOCATION_SERVICE);openProfileRequested=getIntent().getBooleanExtra("open_profile",false);
         Fullscreen.apply(this);
         if (client.signedIn()) showRiderLink(); else showAuthentication();
     }
@@ -55,7 +56,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     }
     private EditText input(String hint, boolean password) {
         EditText field = new EditText(this); field.setHint(hint); field.setTextColor(Color.WHITE); field.setHintTextColor(Color.rgb(125, 150, 160));
-        field.setSingleLine(true); if (password) field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); return field;
+        field.setSingleLine(true);field.setPadding(dp(16),0,dp(16),0);field.setBackground(UiKit.rounded(this,Color.rgb(14,31,38),14,Color.rgb(36,66,76))); if (password) field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); return field;
     }
     private Button button(String text, int color) { Button b = new Button(this); b.setText(text); UiKit.button(b,color); return b; }
 
@@ -123,6 +124,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         socialButton.setOnClickListener(v->startActivity(new Intent(this,RiderLinkSocialActivity.class)));
         privacyButton.setOnClickListener(v->toast("LIVE shares an approximate public position. Turn LIVE off to become invisible."));
         startLocation(); handler.removeCallbacks(publish); handler.post(publish);
+        if(openProfileRequested){openProfileRequested=false;root.postDelayed(this::showProfileDialog,180L);}
     }
 
     private void showProfileDialog() {
@@ -162,7 +164,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
 
     private interface Pick{void set(int value);}
     private void bind(Spinner spinner,Pick pick,RiderAvatarView avatar){spinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){public void onItemSelected(android.widget.AdapterView<?> p,View v,int i,long id){pick.set(i);avatar.invalidate();}public void onNothingSelected(android.widget.AdapterView<?> p){}});}
-    private Spinner profileSpinner(String label,String[] values,LinearLayout panel){TextView heading=title(label.toUpperCase(),11,Color.rgb(145,175,185));heading.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);panel.addView(heading,new LinearLayout.LayoutParams(-1,dp(32)));Spinner spinner=new Spinner(this);ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,values);spinner.setAdapter(adapter);spinner.setBackgroundColor(Color.rgb(20,39,46));panel.addView(spinner,new LinearLayout.LayoutParams(-1,dp(52)));return spinner;}
+    private Spinner profileSpinner(String label,String[] values,LinearLayout panel){TextView heading=title(label.toUpperCase(),11,Color.rgb(145,175,185));heading.setGravity(Gravity.LEFT|Gravity.CENTER_VERTICAL);panel.addView(heading,new LinearLayout.LayoutParams(-1,dp(32)));Spinner spinner=new Spinner(this);ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,values);spinner.setAdapter(adapter);spinner.setPadding(dp(12),0,dp(12),0);spinner.setBackground(UiKit.rounded(this,Color.rgb(20,39,46),14,Color.rgb(40,72,82)));panel.addView(spinner,new LinearLayout.LayoutParams(-1,dp(52)));return spinner;}
     private void select(Spinner spinner,String[] values,String wanted){for(int i=0;i<values.length;i++)if(values[i].equalsIgnoreCase(wanted)){spinner.setSelection(i);return;}spinner.setSelection(values.length-1);}
 
     private void startLocation() {
