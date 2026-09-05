@@ -109,7 +109,7 @@ public class MainActivity extends Activity implements LocationListener {
         weatherData = weatherRepository.cached();
         weatherAlert = weatherRepository.cachedAlert();
         speedView = new SpeedView(this);
-        speedView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        speedView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
         setContentView(speedView);
         enterImmersive();
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
