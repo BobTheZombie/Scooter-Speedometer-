@@ -79,7 +79,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         tripInfo = label(15, Color.WHITE, 0xE5101820, Gravity.CENTER, 12);
         FrameLayout.LayoutParams bottom = new FrameLayout.LayoutParams(-1, dp(50));
         bottom.gravity = Gravity.BOTTOM; bottom.setMargins(dp(45), 0, dp(45), dp(15)); root.addView(tripInfo, bottom);
-        Button close = new Button(this); close.setText("×"); close.setTextSize(22); close.setOnClickListener(v -> finish());
+        Button close = new Button(this); close.setText("×"); close.setTextSize(22);UiKit.button(close,Color.rgb(40,55,62)); close.setOnClickListener(v -> finish());
         FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(dp(44), dp(44));
         closeParams.gravity = Gravity.BOTTOM | Gravity.RIGHT; closeParams.setMargins(0,0,dp(4),dp(18)); root.addView(close, closeParams);
         setContentView(root);
