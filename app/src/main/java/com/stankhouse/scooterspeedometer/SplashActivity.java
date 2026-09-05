@@ -20,8 +20,7 @@ public class SplashActivity extends Activity {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN |
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
+        Fullscreen.apply(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL); root.setGravity(Gravity.CENTER);
         root.setPadding(dp(28), dp(28), dp(28), dp(28)); root.setBackgroundColor(Color.rgb(3, 9, 14));
@@ -53,4 +52,5 @@ public class SplashActivity extends Activity {
         return view;
     }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+    @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) Fullscreen.apply(this); }
 }
