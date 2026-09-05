@@ -1,5 +1,9 @@
 # Scooter Speedometer
 
+## Version 5.4 — complete interface refresh
+
+The entire riding experience now uses one cohesive visual system: dashboard, settings, RiderLink, social, profile/avatar, navigation, delivery cockpit, weather, media, backup camera, onboarding and dialogs. The refresh adds consistent icon-led navigation, layered glass surfaces, improved typography, spacing, touch targets, transitions, and dedicated user/settings hubs while preserving Avaturn 3D avatars and RiderLink data.
+
 A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 
 ## Features
