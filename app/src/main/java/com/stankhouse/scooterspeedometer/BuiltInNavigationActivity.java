@@ -171,7 +171,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     }
     private String read(HttpURLConnection connection) throws Exception { BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream())); StringBuilder out = new StringBuilder(); String line; while ((line = reader.readLine()) != null) out.append(line); reader.close(); return out.toString(); }
     private void showError(String message) { instruction.setText(message); new AlertDialog.Builder(this).setTitle("Navigation").setMessage(message).setPositiveButton("Close", (d,w) -> finish()).show(); }
-    @Override public void onInit(int status) { speechReady = status == TextToSpeech.SUCCESS; if (speechReady) speech.setLanguage(Locale.US); }
+    @Override public void onInit(int status) { speechReady = status == TextToSpeech.SUCCESS; if (speechReady) { speech.setLanguage(Locale.US); VoiceSettings.apply(this,speech); } }
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) Fullscreen.apply(this); }
     @Override protected void onDestroy() { try { locationManager.removeUpdates(this); } catch (Exception ignored) {} network.shutdownNow(); speech.stop(); speech.shutdown(); map.destroy(); super.onDestroy(); }
     @Override public void onProviderEnabled(String provider) { }
