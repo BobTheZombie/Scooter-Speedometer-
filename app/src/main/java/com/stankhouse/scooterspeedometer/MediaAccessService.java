@@ -30,6 +30,8 @@ public class MediaAccessService extends NotificationListenerService {
         String body = value(extras.getCharSequence(Notification.EXTRA_BIG_TEXT));
         if (TextUtils.isEmpty(body)) body = value(extras.getCharSequence(Notification.EXTRA_TEXT));
         String sub = value(extras.getCharSequence(Notification.EXTRA_SUB_TEXT));
+        CharSequence[] lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
+        if (lines != null) for (CharSequence line : lines) if (line != null && !body.contains(line)) body += " • " + line;
         android.content.SharedPreferences prefs = getSharedPreferences("speedometer", MODE_PRIVATE);
         boolean newOffer = !sbn.getKey().equals(prefs.getString("dasher_key", ""));
         prefs.edit()
@@ -39,8 +41,9 @@ public class MediaAccessService extends NotificationListenerService {
         DeliveryCockpit.recordOffer(this, sbn.getKey(), title, body, sub);
         if (newOffer && prefs.getBoolean("dasher_voice", true) && speechReady) {
             float pay = prefs.getFloat("dasher_offer_pay", 0f), miles = prefs.getFloat("dasher_offer_miles", 0f);
+            String restaurant = prefs.getString("dasher_restaurant", title);
             String announcement = "New DoorDash offer. " + (pay > 0 ? String.format(java.util.Locale.US, "%.2f dollars. ", pay) : "") +
-                    (miles > 0 ? String.format(java.util.Locale.US, "%.1f miles. ", miles) : "") + title;
+                    (miles > 0 ? String.format(java.util.Locale.US, "%.1f miles. ", miles) : "") + restaurant;
             speech.speak(announcement, TextToSpeech.QUEUE_FLUSH, null, "dasher-offer");
         }
         sendBroadcast(new Intent(ACTION_DASHER_UPDATE).setPackage(getPackageName()));
