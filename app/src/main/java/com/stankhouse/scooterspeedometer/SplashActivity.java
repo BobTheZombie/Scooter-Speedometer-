@@ -23,7 +23,7 @@ public class SplashActivity extends Activity {
         Fullscreen.apply(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL); root.setGravity(Gravity.CENTER);
-        root.setPadding(dp(28), dp(28), dp(28), dp(28)); root.setBackgroundColor(Color.rgb(3, 9, 14));
+        root.setPadding(dp(28), dp(28), dp(28), dp(28)); root.setBackground(UiKit.screenBackground(this));
         ImageView art = new ImageView(this);
         try {
             InputStream input = getAssets().open("bobthezombie_splash.webp.b64");
@@ -34,9 +34,9 @@ public class SplashActivity extends Activity {
         } catch (Exception ignored) { art.setImageResource(R.drawable.ic_launcher); }
         art.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         root.addView(art, new LinearLayout.LayoutParams(-1, 0, 1f));
-        TextView title = text("SCOOTER SPEEDOMETER", 27, Color.WHITE, true);
+        TextView title = text("RIDE COMMAND", 28, Color.WHITE, true);
         root.addView(title, new LinearLayout.LayoutParams(-1, dp(50)));
-        TextView credit = text("Developed by BobTheZombie", 16, Color.rgb(0, 229, 255), true);
+        TextView credit = text("Scooter cockpit • Developed by BobTheZombie", 14, Color.rgb(0, 229, 255), true);
         root.addView(credit, new LinearLayout.LayoutParams(-1, dp(42)));
         setContentView(root);
         root.setAlpha(0f); root.animate().alpha(1f).setDuration(450).start();
