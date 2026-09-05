@@ -11,6 +11,7 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Selective hardware acceleration on the dashboard, maps and 3D avatar creator; splash remains on the compatibility-safe software path
 - Native full-screen Avaturn creator using `https://scooter-speedometer.avaturn.dev/iframe`
 - Permanent Avaturn GLB exports saved to RiderLink profiles and surfaced across discovery, requests, and friends
+- Vsync-synchronized weather animation with clean single-pass clouds to eliminate visible tearing and ghosted circles
 - Built-in navigation uses a smooth, heading-aware live scooter puck and follow camera
 - RiderLink bottom controls use compact fixed single-line sizing on narrow phones
 - Expanded Delivery Cockpit extracts every detail exposed in DoorDash notifications: restaurant, amount, explicit tip, distance, item count, time, pickup and drop-off text
