@@ -9,6 +9,8 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Compatibility-first software rendering with adaptive animation rates, 500 ms GPS sampling and batched mileage persistence for lower battery/storage overhead
 - Legacy immersive fullscreen compatibility path avoids device-specific startup crashes
 - Selective hardware acceleration on the dashboard, maps and avatars; splash remains on the compatibility-safe software path
+- Built-in navigation uses a smooth, heading-aware live scooter puck and follow camera
+- RiderLink bottom controls use compact fixed single-line sizing on narrow phones
 - Expanded Delivery Cockpit extracts every detail exposed in DoorDash notifications: restaurant, amount, explicit tip, distance, item count, time, pickup and drop-off text
 - Dasher Mode has a persistent toggle, mirrors DoorDash driver notifications into a large on-device delivery card, and opens Dasher for protected actions
 - Live Open-Meteo conditions refresh every two minutes while riding; official NWS alerts refresh on the same cycle
