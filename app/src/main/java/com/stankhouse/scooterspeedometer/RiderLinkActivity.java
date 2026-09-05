@@ -128,6 +128,8 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     private void showProfileDialog() {
         ScrollView scroll=new ScrollView(this);LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(18),dp(8),dp(18),dp(16));panel.setBackgroundColor(Color.rgb(8,14,18));scroll.addView(panel);
         RiderAvatarView avatar=new RiderAvatarView(this);RiderAvatarView.AvatarSpec spec=new RiderAvatarView.AvatarSpec();avatar.setSpec(spec);panel.addView(avatar,new LinearLayout.LayoutParams(-1,dp(265)));
+        Button create3d=button("CREATE / EDIT REAL 3D AVATAR",Color.rgb(0,112,135));panel.addView(create3d,new LinearLayout.LayoutParams(-1,dp(56)));create3d.setOnClickListener(v->startActivity(new Intent(this,AvaturnActivity.class)));
+        panel.addView(title("LEGACY 2D FALLBACK",11,Color.rgb(125,145,155)));
         EditText username=input("Rider name",false);panel.addView(username,new LinearLayout.LayoutParams(-1,dp(56)));
         panel.addView(title("BUILD YOUR RIDER",13,Color.rgb(0,229,255)));
         Spinner skin=profileSpinner("Skin tone",new String[]{"Porcelain","Light","Warm","Tan","Brown","Deep brown","Ebony","Peach"},panel);
