@@ -49,6 +49,11 @@
             android:hardwareAccelerated="true"
             android:screenOrientation="sensor"
             android:exported="false" />
+        <activity
+            android:name=".AvaturnActivity"
+            android:hardwareAccelerated="true"
+            android:screenOrientation="sensor"
+            android:exported="false" />
         <service
             android:name=".MediaAccessService"
             android:exported="true"
