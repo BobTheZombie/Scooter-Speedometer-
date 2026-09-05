@@ -56,6 +56,16 @@ public class RiderLinkClient {
         catch (Exception ignored) { }
         rest("POST", "/rest/v1/profiles?on_conflict=id", body.toString(), "resolution=merge-duplicates,return=minimal", callback);
     }
+    public void saveExtendedProfile(String username, String privacy, String make, String model,
+                                    String upgrades, String avatarJson, Callback callback) {
+        try {
+            JSONObject body = new JSONObject().put("id", userId()).put("username", username)
+                    .put("scooter", (make + " " + model).trim()).put("privacy", privacy)
+                    .put("scooter_make", make).put("scooter_model", model)
+                    .put("scooter_upgrades", upgrades).put("avatar_config", new JSONObject(avatarJson));
+            rest("POST", "/rest/v1/profiles?on_conflict=id", body.toString(), "resolution=merge-duplicates,return=minimal", callback);
+        } catch (Exception e) { callback.complete(false, e.getMessage(), ""); }
+    }
     public void updatePresence(double lat, double lon, float accuracy, String privacy, Callback callback) {
         JSONObject body = new JSONObject();
         try { body.put("user_id", userId()).put("latitude", lat).put("longitude", lon).put("accuracy", accuracy)
@@ -90,8 +100,8 @@ public class RiderLinkClient {
         }); } catch(Exception e) { callback.complete(false,e.getMessage(),""); }
     }
     public void getProfile(Callback c) { rest("GET", "/rest/v1/profiles?id=eq." + userId() + "&select=*", null, null, c); }
-    public void discoverRiders(Callback c) { rest("GET", "/rest/v1/profiles?id=neq." + userId() + "&select=id,username,scooter&order=username&limit=100", null, null, c); }
-    public void friendRequests(Callback c) { rest("GET", "/rest/v1/friendships?addressee_id=eq." + userId() + "&status=eq.pending&select=id,requester_id,requester:profiles!friendships_requester_id_fkey(username,scooter)", null, null, c); }
+    public void discoverRiders(Callback c) { rest("GET", "/rest/v1/profiles?id=neq." + userId() + "&select=id,username,scooter,scooter_make,scooter_model,scooter_upgrades,avatar_config&order=username&limit=100", null, null, c); }
+    public void friendRequests(Callback c) { rest("GET", "/rest/v1/friendships?addressee_id=eq." + userId() + "&status=eq.pending&select=id,requester_id,requester:profiles!friendships_requester_id_fkey(username,scooter,scooter_make,scooter_model,avatar_config)", null, null, c); }
     public void friends(Callback c) { rest("POST", "/rest/v1/rpc/my_friends", "{}", "return=representation", c); }
     public void requestFriend(String riderId, Callback c) { try { rest("POST", "/rest/v1/friendships", new JSONObject().put("requester_id",userId()).put("addressee_id",riderId).toString(), "return=minimal", c); } catch(Exception e){c.complete(false,e.getMessage(),"");} }
     public void acceptFriend(long id, Callback c) { rest("PATCH", "/rest/v1/friendships?id=eq." + id + "&addressee_id=eq." + userId(), "{\"status\":\"accepted\"}", "return=minimal", c); }
