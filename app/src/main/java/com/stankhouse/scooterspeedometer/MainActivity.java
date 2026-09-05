@@ -52,6 +52,7 @@ import java.util.ArrayList;
 import java.util.Locale;
 
 public class MainActivity extends Activity implements LocationListener {
+    private interface MenuHandler { void select(int which); }
     private static final int LOCATION_REQUEST = 42;
     private static final int CAMERA_REQUEST = 44;
     private static final int MICROPHONE_REQUEST = 45;
@@ -481,11 +482,11 @@ public class MainActivity extends Activity implements LocationListener {
     private Switch settingsSwitch(String label, boolean checked) {
         Switch toggle = new Switch(this); toggle.setText(label); toggle.setChecked(checked);
         toggle.setTextColor(Color.WHITE); toggle.setTextSize(16); toggle.setGravity(android.view.Gravity.CENTER_VERTICAL);
-        toggle.setPadding(0, 7, 0, 7); toggle.setMinHeight(Math.round(52 * getResources().getDisplayMetrics().density)); return toggle;
+        toggle.setPadding(20, 7, 20, 7); toggle.setMinHeight(Math.round(56 * getResources().getDisplayMetrics().density));UiKit.card(toggle); return toggle;
     }
     private TextView settingsAction(String label, String detail) {
         TextView view = new TextView(this); view.setText(label + "\n" + detail); view.setTextColor(Color.WHITE); view.setTextSize(16);
-        view.setGravity(android.view.Gravity.CENTER_VERTICAL); view.setPadding(0, 8, 0, 8);
+        view.setGravity(android.view.Gravity.CENTER_VERTICAL); view.setPadding(20, 8, 20, 8);view.setLineSpacing(3,1f);UiKit.card(view);
         view.setMinHeight(Math.round(58 * getResources().getDisplayMetrics().density)); return view;
     }
     @Override protected void onDestroy() {
@@ -597,18 +598,21 @@ public class MainActivity extends Activity implements LocationListener {
         }
 
         private void showDashboardCustomizer() {
-            String[] choices = {"▦  Layout & presets", "◉  Appearance & media",
-                    "☾  Night & road awareness", "♫  Voice & spoken alerts", "▣  Delivery / Dasher mode", "▣  Saved profiles"};
-            new AlertDialog.Builder(MainActivity.this).setTitle("Customize dashboard")
-                    .setItems(choices, (dialog, which) -> {
+            String[] choices = {"Layout & presets", "Appearance & media",
+                    "Night & road awareness", "Voice & spoken alerts", "Delivery cockpit", "Saved profiles"};
+            String[] details={"Move, resize and apply cockpit layouts","Theme, gauge, album art and weather","Automatic night mode, OLED and hazards","Natural voice, HUD reading and speech controls","Dasher offers, shifts and mileage logging","Save or recall three dashboard arrangements"};
+            showPolishedMenu("CUSTOMIZE DASHBOARD","Cockpit settings",choices,details,which -> {
                         if (which == 0) showLayoutMenu();
                         else if (which == 1) showAppearanceMenu();
                         else if (which == 2) showRoadSettings();
                         else if (which == 3) showVoiceStudio();
                         else if (which == 4) showDasherSettings();
                         else showProfilesMenu();
-                    }).show();
+                    });
         }
+
+        private void showPolishedMenu(String title,String subtitle,String[] labels,String[] details,MenuHandler handler){float density=getResources().getDisplayMetrics().density;LinearLayout panel=new LinearLayout(MainActivity.this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(Math.round(14*density),Math.round(8*density),Math.round(14*density),Math.round(14*density));panel.setBackgroundColor(Color.rgb(5,12,16));TextView intro=new TextView(MainActivity.this);intro.setText(subtitle);intro.setTextColor(UiKit.MUTED);intro.setTextSize(13);intro.setPadding(Math.round(6*density),0,0,Math.round(10*density));panel.addView(intro);for(int i=0;i<labels.length;i++){final int index=i;TextView row=settingsAction(labels[i]+"   ›",details==null?"":details[i]);row.setOnClickListener(v->{v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);if(activeMenu!=null)activeMenu.dismiss();handler.select(index);});LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,Math.round(72*density));lp.setMargins(0,0,0,Math.round(8*density));panel.addView(row,lp);}ScrollView scroll=new ScrollView(MainActivity.this);scroll.setFillViewport(true);scroll.addView(panel);activeMenu=new AlertDialog.Builder(MainActivity.this).setTitle(title).setView(scroll).setNegativeButton("CLOSE",null).create();activeMenu.setOnShowListener(d->{android.view.Window window=activeMenu.getWindow();if(window!=null){window.setDimAmount(.72f);window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);window.setLayout((int)(getResources().getDisplayMetrics().widthPixels*.94f),WindowManager.LayoutParams.WRAP_CONTENT);}});activeMenu.show();}
+        private AlertDialog activeMenu;
 
         private void showDasherSettings() {
             float density = getResources().getDisplayMetrics().density;
@@ -703,15 +707,17 @@ public class MainActivity extends Activity implements LocationListener {
         private void showLayoutMenu() {
             String[] choices = {editingDashboard ? "✓ Finish drag & resize" : "✥ Drag & resize sections",
                     "Full portrait", "Compact portrait", "Full landscape", "Compact landscape"};
-            new AlertDialog.Builder(MainActivity.this).setTitle("Layout & presets").setItems(choices, (dialog, which) -> {
+            String[] details={editingDashboard?"Save section positions and return":"Reposition media, gauge and navigation","Maximum information for upright mounting","Larger gauge with fewer distractions","Wide-screen dashboard arrangement","Minimal wide-screen riding layout"};
+            showPolishedMenu("LAYOUT & PRESETS","Choose a preset or build your own",choices,details,which -> {
                 if (which == 0) { editingDashboard = !editingDashboard; editingSection = 0; invalidate(); }
                 else applyPreset(which >= 3, which == 2 || which == 4);
-            }).setNegativeButton("Back", (dialog, which) -> showDashboardCustomizer()).show();
+            });
         }
 
         private void showAppearanceMenu() {
             String[] choices = {"Dashboard theme", "Album-art transparency", "Gauge color", "Gauge style", "Weather widget skin", "Live weather provider"};
-            new AlertDialog.Builder(MainActivity.this).setTitle("Appearance & media").setItems(choices, (dialog, which) -> {
+            String[] details={dashboardTheme==1?"Inferno tuner":"Classic dashboard",Math.round(dashboardLayout.albumAlpha/255f*100)+"% background strength",new String[]{"Cyan","Lime","Amber","Purple","Red"}[Math.max(0,Math.min(4,dashboardLayout.gaugeColor))],new String[]{"Classic arc","Dual arc","Minimal"}[Math.max(0,Math.min(2,dashboardLayout.gaugeStyle))],new String[]{"HTC Sense glass","Neon cyan","Minimal clear","Retro amber","Storm radar"}[Math.max(0,Math.min(4,weatherSkin))],weatherRepository.providerName()+" • "+weatherRepository.locationName()};
+            showPolishedMenu("APPEARANCE & MEDIA","Visual system",choices,details,which -> {
                 if (which == 0) {
                     String[] themes = {"Classic dashboard", "Inferno tuner"};
                     new AlertDialog.Builder(MainActivity.this).setTitle("Dashboard theme")
@@ -735,14 +741,12 @@ public class MainActivity extends Activity implements LocationListener {
                                     (d, item) -> { dashboardLayout.gaugeStyle = item; saveDashboard(); invalidate(); d.dismiss(); }).show();
                 } else if (which == 4) showWeatherSkinPicker();
                 else showWeatherSettings();
-            }).setNegativeButton("Back", (dialog, which) -> showDashboardCustomizer()).show();
+            });
         }
 
         private void showProfilesMenu() {
             String[] choices = {"Save current layout", "Load saved layout"};
-            new AlertDialog.Builder(MainActivity.this).setTitle("Saved profiles").setItems(choices,
-                    (dialog, which) -> showProfilePicker(which == 0))
-                    .setNegativeButton("Back", (dialog, which) -> showDashboardCustomizer()).show();
+            showPolishedMenu("SAVED PROFILES","Three reusable cockpit configurations",choices,new String[]{"Store the current section arrangement","Restore a previously saved arrangement"},which->showProfilePicker(which==0));
         }
 
         private void text(Canvas c, String value, float x, float y, float size, int color, Paint.Align align, boolean bold) {
@@ -985,12 +989,13 @@ public class MainActivity extends Activity implements LocationListener {
         private void drawHud(Canvas c,float w,float h,float scale){
             float cy=h*.045f,r=Math.max(18f*scale,Math.min(w,h)*.032f);hudMicRect.set(w*.705f-r,cy-r,w*.705f+r,cy+r);
             paint.setStyle(Paint.Style.FILL);paint.setColor(Color.argb(235,5,25,33));c.drawRoundRect(new RectF(w*.655f,h*.008f,w*.982f,h*.082f),18f*scale,18f*scale,paint);
-            paint.setColor(hudVoiceStatusUntil>SystemClock.elapsedRealtime()?Color.rgb(255,64,74):Color.rgb(0,135,158));c.drawCircle(hudMicRect.centerX(),hudMicRect.centerY(),r,paint);text(c,"●",hudMicRect.centerX(),hudMicRect.centerY()+7f*scale,17f*scale,Color.WHITE,Paint.Align.CENTER,true);
+            paint.setColor(hudVoiceStatusUntil>SystemClock.elapsedRealtime()?Color.rgb(255,64,74):Color.rgb(0,135,158));c.drawCircle(hudMicRect.centerX(),hudMicRect.centerY(),r,paint);drawMicrophone(c,hudMicRect.centerX(),hudMicRect.centerY(),scale);
             int messages=prefs.getInt("hud_message_count",0),calls=prefs.getInt("hud_call_count",0);drawHudIcon(c,"✉",w*.825f,cy,messages,scale);drawHudIcon(c,"☎",w*.935f,cy,calls,scale);
             long age=System.currentTimeMillis()-prefs.getLong("hud_time",0);if(age<12000L){String kind=prefs.getString("hud_type","message");String title=prefs.getString("hud_title","");String body=prefs.getString("hud_body","");RectF banner=new RectF(w*.08f,h*.088f,w*.92f,h*.145f);paint.setColor(Color.argb(242,3,22,29));c.drawRoundRect(banner,15f*scale,15f*scale,paint);text(c,("call".equals(kind)?"☎  ":"✉  ")+ellipsize(title,30),banner.left+w*.025f,h*.112f,13f*scale,Color.rgb(0,229,255),Paint.Align.LEFT,true);text(c,ellipsize(body,64),banner.left+w*.025f,h*.136f,10f*scale,Color.WHITE,Paint.Align.LEFT,false);postInvalidateDelayed(500L);}
             if(hudVoiceStatusUntil>SystemClock.elapsedRealtime()){RectF statusBox=new RectF(w*.22f,h*.15f,w*.78f,h*.185f);paint.setColor(Color.argb(238,0,80,96));c.drawRoundRect(statusBox,12f*scale,12f*scale,paint);text(c,hudVoiceStatus,w*.5f,h*.174f,11f*scale,Color.WHITE,Paint.Align.CENTER,true);postInvalidateDelayed(250L);}
         }
-        private void drawHudIcon(Canvas c,String icon,float x,float y,int count,float scale){text(c,icon,x,y+9f*scale,24f*scale,Color.WHITE,Paint.Align.CENTER,true);if(count>0){float bx=x+17f*scale,by=y-14f*scale,br=10f*scale;paint.setColor(Color.rgb(230,35,50));c.drawCircle(bx,by,br,paint);text(c,count>99?"99+":String.valueOf(count),bx,by+4f*scale,count>99?7f*scale:9f*scale,Color.WHITE,Paint.Align.CENTER,true);}}
+        private void drawMicrophone(Canvas c,float x,float y,float scale){paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.4f*scale);paint.setStrokeCap(Paint.Cap.ROUND);paint.setColor(Color.WHITE);RectF capsule=new RectF(x-5f*scale,y-10f*scale,x+5f*scale,y+5f*scale);c.drawRoundRect(capsule,6f*scale,6f*scale,paint);Path stem=new Path();stem.moveTo(x-10f*scale,y);stem.quadTo(x-10f*scale,y+12f*scale,x,y+12f*scale);stem.quadTo(x+10f*scale,y+12f*scale,x+10f*scale,y);c.drawPath(stem,paint);c.drawLine(x,y+12f*scale,x,y+17f*scale,paint);c.drawLine(x-6f*scale,y+17f*scale,x+6f*scale,y+17f*scale,paint);paint.setStyle(Paint.Style.FILL);}
+        private void drawHudIcon(Canvas c,String icon,float x,float y,int count,float scale){paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(2.4f*scale);paint.setStrokeCap(Paint.Cap.ROUND);paint.setStrokeJoin(Paint.Join.ROUND);paint.setColor(Color.WHITE);if("✉".equals(icon)){RectF box=new RectF(x-13f*scale,y-9f*scale,x+13f*scale,y+10f*scale);c.drawRoundRect(box,3f*scale,3f*scale,paint);c.drawLine(box.left+2f*scale,box.top+2f*scale,x,y+2f*scale,paint);c.drawLine(x,y+2f*scale,box.right-2f*scale,box.top+2f*scale,paint);}else{Path phone=new Path();phone.moveTo(x-10f*scale,y-11f*scale);phone.quadTo(x-16f*scale,y-5f*scale,x-7f*scale,y+5f*scale);phone.quadTo(x+3f*scale,y+16f*scale,x+11f*scale,y+9f*scale);phone.lineTo(x+6f*scale,y+3f*scale);phone.lineTo(x,y+7f*scale);phone.quadTo(x-5f*scale,y+3f*scale,x-7f*scale,y);phone.lineTo(x-3f*scale,y-5f*scale);phone.close();c.drawPath(phone,paint);}paint.setStyle(Paint.Style.FILL);if(count>0){float bx=x+17f*scale,by=y-14f*scale,br=10f*scale;paint.setColor(Color.rgb(230,35,50));c.drawCircle(bx,by,br,paint);text(c,count>99?"99+":String.valueOf(count),bx,by+4f*scale,count>99?7f*scale:9f*scale,Color.WHITE,Paint.Align.CENTER,true);}}
 
         private void drawSenseWeatherEffects(Canvas c, RectF panel, float scale) {
             if (weatherData == null) return;
