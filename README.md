@@ -8,6 +8,10 @@ The entire riding experience now uses one cohesive visual system: dashboard, set
 
 Replaces remaining platform/Holo-looking widgets with a dependency-light Material 3 visual system. Dialogs, buttons, text fields, checkboxes and switches now use modern rounded shapes, tonal surface containers, state-aware cyan controls and consistent 48–56dp touch targets without adding a large UI runtime dependency.
 
+## Version 5.6 — notification privacy controls
+
+Adds a master notification-monitoring kill switch plus independent media, message, call and delivery controls. Monitoring defaults off. Turning it off clears cached notification details and counters, stops speech, and disconnects the Android notification listener on supported versions.
+
 A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 
 ## Features
