@@ -55,6 +55,8 @@
             android:hardwareAccelerated="true"
             android:screenOrientation="sensor"
             android:exported="false" />
+        <activity android:name=".MaintenanceGarageActivity" android:hardwareAccelerated="true" android:screenOrientation="sensor" android:exported="false" />
+        <activity android:name=".GroupRideActivity" android:hardwareAccelerated="true" android:screenOrientation="sensor" android:exported="false" />
         <service
             android:name=".MediaAccessService"
             android:exported="true"
