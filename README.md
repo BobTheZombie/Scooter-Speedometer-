@@ -10,7 +10,11 @@ Replaces remaining platform/Holo-looking widgets with a dependency-light Materia
 
 ## Version 5.6 — notification privacy controls
 
-Adds a master notification-monitoring kill switch plus independent media, message, call and delivery controls. Monitoring defaults off. Turning it off clears cached notification details and counters, stops speech, and disconnects the Android notification listener on supported versions.
+Adds a master notification-monitoring kill switch plus independent media, message, call and delivery controls. Monitoring defaults off. Turning it off clears cached notification details and counters, stops speech, and makes the listener inert.
+
+## Version 5.7 — notification and media reliability
+
+Keeps the Android listener bound but inert while monitoring is disabled, avoiding unreliable listener reconnection on manufacturer-modified Android builds. Enabling monitoring now refreshes HUD counts and media sessions immediately; disabling it still discards events, clears private cached data and stops speech.
 
 A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 
