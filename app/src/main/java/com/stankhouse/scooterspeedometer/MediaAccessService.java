@@ -17,15 +17,17 @@ public class MediaAccessService extends NotificationListenerService {
     public static final String ACTION_DASHER_UPDATE = "com.stankhouse.scooterspeedometer.DASHER_UPDATE";
     public static final String ACTION_HUD_UPDATE = "com.stankhouse.scooterspeedometer.HUD_UPDATE";
     public static final String ACTION_MONITORING_CHANGED = "com.stankhouse.scooterspeedometer.MONITORING_CHANGED";
+    public static final String ACTION_APP_VISIBILITY_CHANGED = "com.stankhouse.scooterspeedometer.APP_VISIBILITY_CHANGED";
     private TextToSpeech speech;
     private boolean speechReady;
-    private final BroadcastReceiver settingsReceiver=new BroadcastReceiver(){@Override public void onReceive(Context context,Intent intent){if(monitoringEnabled()){createSpeech();updateHud(null,false);}else clearPrivateState();}};
+    private final BroadcastReceiver settingsReceiver=new BroadcastReceiver(){@Override public void onReceive(Context context,Intent intent){if(processingAllowed()){createSpeech();updateHud(null,false);}else clearPrivateState();}};
 
     @Override public void onCreate() {
         super.onCreate();
         IntentFilter filter=new IntentFilter(ACTION_MONITORING_CHANGED);
+        filter.addAction(ACTION_APP_VISIBILITY_CHANGED);
         if(Build.VERSION.SDK_INT>=33)registerReceiver(settingsReceiver,filter,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(settingsReceiver,filter);
-        if(!monitoringEnabled()){clearPrivateState();return;}
+        if(!processingAllowed()){clearPrivateState();return;}
         createSpeech();
     }
 
@@ -39,7 +41,7 @@ public class MediaAccessService extends NotificationListenerService {
     }
 
     @Override public void onNotificationPosted(StatusBarNotification sbn) {
-        if(!monitoringEnabled()){clearPrivateState();return;}
+        if(!processingAllowed()){clearPrivateState();return;}
         updateHud(sbn,true);
         if (!categoryEnabled("monitor_delivery",true)||!isDoorDash(sbn) || !getSharedPreferences("speedometer", MODE_PRIVATE).getBoolean("dasher_mode", false)) return;
         Bundle extras = sbn.getNotification().extras;
@@ -67,7 +69,7 @@ public class MediaAccessService extends NotificationListenerService {
     }
 
     @Override public void onNotificationRemoved(StatusBarNotification sbn) {
-        if(!monitoringEnabled())return;
+        if(!processingAllowed())return;
         updateHud(sbn,false);
         if (!isDoorDash(sbn)) return;
         String current = getSharedPreferences("speedometer", MODE_PRIVATE).getString("dasher_key", "");
@@ -77,7 +79,7 @@ public class MediaAccessService extends NotificationListenerService {
         sendBroadcast(new Intent(ACTION_DASHER_UPDATE).setPackage(getPackageName()));
     }
 
-    @Override public void onListenerConnected(){super.onListenerConnected();if(!monitoringEnabled()){clearPrivateState();return;}createSpeech();updateHud(null,false);}
+    @Override public void onListenerConnected(){super.onListenerConnected();if(!processingAllowed()){clearPrivateState();return;}createSpeech();updateHud(null,false);}
 
     private void updateHud(StatusBarNotification changed,boolean posted){
         android.content.SharedPreferences prefs=getSharedPreferences("speedometer",MODE_PRIVATE);
@@ -90,6 +92,7 @@ public class MediaAccessService extends NotificationListenerService {
         prefs.edit().putInt("hud_message_count",messages).putInt("hud_call_count",calls).apply();sendBroadcast(new Intent(ACTION_HUD_UPDATE).setPackage(getPackageName()));
     }
     private boolean monitoringEnabled(){return getSharedPreferences("speedometer",MODE_PRIVATE).getBoolean("notification_monitoring",false);}
+    private boolean processingAllowed(){android.content.SharedPreferences p=getSharedPreferences("speedometer",MODE_PRIVATE);return monitoringEnabled()&&p.getBoolean("app_visible",false);}
     private boolean categoryEnabled(String key,boolean fallback){return getSharedPreferences("speedometer",MODE_PRIVATE).getBoolean(key,fallback);}
     private void clearPrivateState(){getSharedPreferences("speedometer",MODE_PRIVATE).edit().remove("hud_title").remove("hud_body").remove("hud_type").remove("hud_time").remove("hud_last_spoken_key").putInt("hud_message_count",0).putInt("hud_call_count",0).remove("dasher_key").remove("dasher_title").remove("dasher_body").remove("dasher_sub").apply();sendBroadcast(new Intent(ACTION_HUD_UPDATE).setPackage(getPackageName()));sendBroadcast(new Intent(ACTION_DASHER_UPDATE).setPackage(getPackageName()));if(speech!=null)speech.stop();}
     private String safe(String value){return TextUtils.isEmpty(value)?"unknown":value.replaceAll("https?://\\S+","a link");}
