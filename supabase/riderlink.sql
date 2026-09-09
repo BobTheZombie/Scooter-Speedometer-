@@ -125,16 +125,12 @@ drop policy if exists "members read" on public.club_members; create policy "memb
 drop policy if exists "club chat read" on public.club_messages; create policy "club chat read" on public.club_messages for select to authenticated using(public.is_club_member(club_id));
 drop policy if exists "club chat insert" on public.club_messages; create policy "club chat insert" on public.club_messages for insert to authenticated with check(sender_id=auth.uid() and public.is_club_member(club_id));
 
-create or replace function public.my_friends() returns table(id uuid,username text,scooter text)
-language sql stable security definer set search_path=public as $$
- select p.id,p.username,p.scooter from friendships f join profiles p on p.id=case when f.requester_id=auth.uid() then f.addressee_id else f.requester_id end where f.status='accepted' and auth.uid() in(f.requester_id,f.addressee_id) order by p.username;
-$$;
 create or replace function public.my_clubs() returns table(id bigint,name text,invite_code text,role text)
 language sql stable security definer set search_path=public as $$select c.id,c.name,c.invite_code,m.role from club_members m join clubs c on c.id=m.club_id where m.user_id=auth.uid() order by c.name$$;
 create or replace function public.create_club(p_name text) returns bigint language plpgsql security definer set search_path=public as $$declare new_id bigint;begin if char_length(trim(p_name)) not between 3 and 50 then raise exception 'Club name must be 3-50 characters';end if;insert into clubs(owner_id,name,invite_code) values(auth.uid(),trim(p_name),upper(substr(md5(random()::text||clock_timestamp()::text),1,8))) returning id into new_id;insert into club_members(club_id,user_id,role) values(new_id,auth.uid(),'owner');return new_id;end$$;
 create or replace function public.join_club(p_code text) returns bigint language plpgsql security definer set search_path=public as $$declare found_id bigint;begin select id into found_id from clubs where invite_code=upper(trim(p_code));if found_id is null then raise exception 'Invite code not found';end if;insert into club_members(club_id,user_id) values(found_id,auth.uid()) on conflict do nothing;return found_id;end$$;
-revoke all on function public.my_friends() from public; revoke all on function public.my_clubs() from public; revoke all on function public.create_club(text) from public; revoke all on function public.join_club(text) from public;
-grant execute on function public.my_friends() to authenticated; grant execute on function public.my_clubs() to authenticated; grant execute on function public.create_club(text) to authenticated; grant execute on function public.join_club(text) to authenticated;
+revoke all on function public.my_clubs() from public; revoke all on function public.create_club(text) from public; revoke all on function public.join_club(text) from public;
+grant execute on function public.my_clubs() to authenticated; grant execute on function public.create_club(text) to authenticated; grant execute on function public.join_club(text) to authenticated;
 
 -- RiderLink 3.1 community Flock/ALPR camera reports.
 create table if not exists public.community_hazards (
