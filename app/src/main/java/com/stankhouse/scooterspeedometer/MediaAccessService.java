@@ -19,13 +19,13 @@ public class MediaAccessService extends NotificationListenerService {
     public static final String ACTION_MONITORING_CHANGED = "com.stankhouse.scooterspeedometer.MONITORING_CHANGED";
     private TextToSpeech speech;
     private boolean speechReady;
-    private final BroadcastReceiver settingsReceiver=new BroadcastReceiver(){@Override public void onReceive(Context context,Intent intent){if(!monitoringEnabled()){clearPrivateState();disconnectListener();}}};
+    private final BroadcastReceiver settingsReceiver=new BroadcastReceiver(){@Override public void onReceive(Context context,Intent intent){if(monitoringEnabled()){createSpeech();updateHud(null,false);}else clearPrivateState();}};
 
     @Override public void onCreate() {
         super.onCreate();
         IntentFilter filter=new IntentFilter(ACTION_MONITORING_CHANGED);
         if(Build.VERSION.SDK_INT>=33)registerReceiver(settingsReceiver,filter,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(settingsReceiver,filter);
-        if(!monitoringEnabled()){clearPrivateState();disconnectListener();return;}
+        if(!monitoringEnabled()){clearPrivateState();return;}
         createSpeech();
     }
 
@@ -39,7 +39,7 @@ public class MediaAccessService extends NotificationListenerService {
     }
 
     @Override public void onNotificationPosted(StatusBarNotification sbn) {
-        if(!monitoringEnabled()){clearPrivateState();disconnectListener();return;}
+        if(!monitoringEnabled()){clearPrivateState();return;}
         updateHud(sbn,true);
         if (!categoryEnabled("monitor_delivery",true)||!isDoorDash(sbn) || !getSharedPreferences("speedometer", MODE_PRIVATE).getBoolean("dasher_mode", false)) return;
         Bundle extras = sbn.getNotification().extras;
@@ -77,7 +77,7 @@ public class MediaAccessService extends NotificationListenerService {
         sendBroadcast(new Intent(ACTION_DASHER_UPDATE).setPackage(getPackageName()));
     }
 
-    @Override public void onListenerConnected(){super.onListenerConnected();if(!monitoringEnabled()){clearPrivateState();disconnectListener();return;}createSpeech();updateHud(null,false);}
+    @Override public void onListenerConnected(){super.onListenerConnected();if(!monitoringEnabled()){clearPrivateState();return;}createSpeech();updateHud(null,false);}
 
     private void updateHud(StatusBarNotification changed,boolean posted){
         android.content.SharedPreferences prefs=getSharedPreferences("speedometer",MODE_PRIVATE);
@@ -92,7 +92,6 @@ public class MediaAccessService extends NotificationListenerService {
     private boolean monitoringEnabled(){return getSharedPreferences("speedometer",MODE_PRIVATE).getBoolean("notification_monitoring",false);}
     private boolean categoryEnabled(String key,boolean fallback){return getSharedPreferences("speedometer",MODE_PRIVATE).getBoolean(key,fallback);}
     private void clearPrivateState(){getSharedPreferences("speedometer",MODE_PRIVATE).edit().remove("hud_title").remove("hud_body").remove("hud_type").remove("hud_time").remove("hud_last_spoken_key").putInt("hud_message_count",0).putInt("hud_call_count",0).remove("dasher_key").remove("dasher_title").remove("dasher_body").remove("dasher_sub").apply();sendBroadcast(new Intent(ACTION_HUD_UPDATE).setPackage(getPackageName()));sendBroadcast(new Intent(ACTION_DASHER_UPDATE).setPackage(getPackageName()));if(speech!=null)speech.stop();}
-    private void disconnectListener(){if(Build.VERSION.SDK_INT>=24)requestUnbind();}
     private String safe(String value){return TextUtils.isEmpty(value)?"unknown":value.replaceAll("https?://\\S+","a link");}
     private boolean isGroupSummary(Notification notification){return notification!=null&&(notification.flags&Notification.FLAG_GROUP_SUMMARY)!=0;}
     private boolean isMessage(StatusBarNotification sbn){if(sbn==null)return false;Notification n=sbn.getNotification();String category=n.category;String pkg=sbn.getPackageName().toLowerCase(java.util.Locale.US);return Notification.CATEGORY_MESSAGE.equals(category)||n.extras.getParcelable(Notification.EXTRA_MESSAGING_PERSON)!=null||pkg.contains("messaging")||pkg.contains("whatsapp")||pkg.contains("signal");}
