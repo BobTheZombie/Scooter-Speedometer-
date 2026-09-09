@@ -117,6 +117,12 @@ public class RiderLinkClient {
     public void joinClub(String code, Callback c) { try { rest("POST", "/rest/v1/rpc/join_club", new JSONObject().put("p_code",code.toUpperCase()).toString(), "return=representation", c); } catch(Exception e){c.complete(false,e.getMessage(),"");} }
     public void clubMessages(long clubId, Callback c) { rest("GET", "/rest/v1/club_messages?club_id=eq." + clubId + "&select=*,sender:profiles!club_messages_sender_id_fkey(username)&order=created_at.asc&limit=100", null, null, c); }
     public void sendClub(long clubId, String message, Callback c) { try { rest("POST", "/rest/v1/club_messages", new JSONObject().put("club_id",clubId).put("sender_id",userId()).put("body",message).toString(), "return=minimal", c); } catch(Exception e){c.complete(false,e.getMessage(),"");} }
+    public void createGroupRide(String name,String destination,Callback c){try{rest("POST","/rest/v1/rpc/create_group_ride",new JSONObject().put("p_name",name).put("p_destination",destination).toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    public void joinGroupRide(String code,Callback c){try{rest("POST","/rest/v1/rpc/join_group_ride",new JSONObject().put("p_code",code.toUpperCase()).toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    public void myActiveGroupRides(Callback c){rest("POST","/rest/v1/rpc/my_active_group_rides","{}","return=representation",c);}
+    public void groupRideMembers(long rideId,Callback c){rest("GET","/rest/v1/group_ride_members?ride_id=eq."+rideId+"&select=*,profile:profiles(username,scooter,avatar_3d_url)&order=joined_at",null,null,c);}
+    public void updateGroupRideLocation(long rideId,double lat,double lon,float speed,Callback c){try{rest("POST","/rest/v1/group_ride_presence?on_conflict=ride_id,user_id",new JSONObject().put("ride_id",rideId).put("user_id",userId()).put("latitude",lat).put("longitude",lon).put("speed_mps",speed).put("updated_at",new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'",java.util.Locale.US).format(new java.util.Date())).toString(),"resolution=merge-duplicates,return=minimal",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    public void endGroupRide(long rideId,Callback c){rest("PATCH","/rest/v1/group_rides?id=eq."+rideId+"&owner_id=eq."+userId(),"{\"active\":false}","return=minimal",c);}
     public void signOut() { prefs.edit().clear().apply(); }
     public void shutdown() { worker.shutdownNow(); }
 
