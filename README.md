@@ -24,6 +24,10 @@ Adds complete local ride sessions with compact GPS traces, speed/time/distance s
 
 Enables hardware acceleration specifically for the TextureView camera screen, adds direct permission recovery, reliable front-camera lifecycle handling, retryable on-screen errors, camera-in-use guidance, safer capture-session configuration, and clean reopen behavior after rotation or app switching.
 
+## Version 6.2 — foreground-only notification privacy
+
+Notification and media-event processing now requires both explicit monitoring consent and a visible app activity. Closing, swiping away, or backgrounding every app screen immediately makes the listener inert, clears cached notification details and HUD counts, and stops speech. Android may retain the system permission, but notification content is not inspected while the app UI is closed.
+
 A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 
 ## Features
