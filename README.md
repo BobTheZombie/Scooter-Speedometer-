@@ -16,6 +16,10 @@ Adds a master notification-monitoring kill switch plus independent media, messag
 
 Keeps the Android listener bound but inert while monitoring is disabled, avoiding unreliable listener reconnection on manufacturer-modified Android builds. Enabling monitoring now refreshes HUD counts and media sessions immediately; disabling it still discards events, clears private cached data and stops speech.
 
+## Version 6.0 — Ride Center
+
+Adds complete local ride sessions with compact GPS traces, speed/time/distance statistics, history and CSV export; a recorded-mileage maintenance garage with customizable service intervals; conservative high-G plus sudden-stop crash check-ins with a 30-second RiderLink SOS countdown; and temporary RiderLink group rides with expiring invite codes and live member presence.
+
 A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 
 ## Features
