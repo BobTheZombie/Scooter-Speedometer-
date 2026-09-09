@@ -38,6 +38,7 @@
             android:exported="false" />
         <activity
             android:name=".BackupCameraActivity"
+            android:hardwareAccelerated="true"
             android:screenOrientation="sensor"
             android:exported="false" />
         <activity
