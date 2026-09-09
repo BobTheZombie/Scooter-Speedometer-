@@ -16,6 +16,7 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.os.Bundle;
+import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.view.Gravity;
@@ -39,6 +40,9 @@ public class BackupCameraActivity extends Activity {
     private String cameraId;
     private boolean mirrored = true;
     private Button mirrorButton;
+    private TextView cameraStatus;
+    private boolean opening;
+    private static final int CAMERA_PERMISSION=612;
 
     private final TextureView.SurfaceTextureListener surfaceListener = new TextureView.SurfaceTextureListener() {
         @Override public void onSurfaceTextureAvailable(SurfaceTexture surface, int width, int height) {
@@ -47,14 +51,14 @@ public class BackupCameraActivity extends Activity {
         @Override public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int width, int height) {
             configureTransform(width, height);
         }
-        @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) { return true; }
+        @Override public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) { closeCamera(); return true; }
         @Override public void onSurfaceTextureUpdated(SurfaceTexture surface) { }
     };
 
     private final CameraDevice.StateCallback cameraState = new CameraDevice.StateCallback() {
-        @Override public void onOpened(CameraDevice device) { camera = device; createPreview(); }
-        @Override public void onDisconnected(CameraDevice device) { device.close(); camera = null; }
-        @Override public void onError(CameraDevice device, int error) { device.close(); camera = null; finish(); }
+        @Override public void onOpened(CameraDevice device) { opening=false;camera = device;runOnUiThread(()->cameraStatus.setVisibility(View.GONE));createPreview(); }
+        @Override public void onDisconnected(CameraDevice device) { opening=false;device.close(); camera = null;showCameraError("Camera disconnected. Tap to retry."); }
+        @Override public void onError(CameraDevice device, int error) { opening=false;device.close(); camera = null;showCameraError(error==CameraDevice.StateCallback.ERROR_CAMERA_IN_USE?"Camera is being used by another app. Close it, then tap to retry.":"Camera could not start. Tap to retry."); }
     };
 
     @Override protected void onCreate(Bundle state) {
@@ -67,6 +71,8 @@ public class BackupCameraActivity extends Activity {
         preview = new TextureView(this);
         root.addView(preview, new FrameLayout.LayoutParams(-1, -1));
         root.addView(new GuideView(), new FrameLayout.LayoutParams(-1, -1));
+
+        cameraStatus=new TextView(this);cameraStatus.setText("Starting front camera…");cameraStatus.setTextColor(Color.WHITE);cameraStatus.setTextSize(16);cameraStatus.setGravity(Gravity.CENTER);cameraStatus.setPadding(dp(24),dp(16),dp(24),dp(16));cameraStatus.setBackground(UiKit.rounded(this,Color.argb(235,8,20,27),22,UiKit.BORDER));cameraStatus.setOnClickListener(v->openCamera());FrameLayout.LayoutParams statusParams=new FrameLayout.LayoutParams(-1,dp(88),Gravity.CENTER);statusParams.setMargins(dp(32),0,dp(32),0);root.addView(cameraStatus,statusParams);
 
         mirrorButton = controlButton("↔  Mirrored");
         FrameLayout.LayoutParams mirrorParams = new FrameLayout.LayoutParams(dp(132), dp(52), Gravity.BOTTOM | Gravity.START);
@@ -98,9 +104,7 @@ public class BackupCameraActivity extends Activity {
     private Button controlButton(String text) {
         Button button = new Button(this);
         button.setText(text);
-        button.setTextColor(Color.WHITE);
-        button.setTextSize(13);
-        button.setBackgroundColor(Color.argb(220, 5, 28, 34));
+        UiKit.button(button,Color.rgb(5,38,46));
         return button;
     }
 
@@ -115,7 +119,8 @@ public class BackupCameraActivity extends Activity {
         cameraThread = new HandlerThread("BackupCamera");
         cameraThread.start();
         cameraHandler = new Handler(cameraThread.getLooper());
-        if (preview.isAvailable()) openCamera(); else preview.setSurfaceTextureListener(surfaceListener);
+        if(checkSelfPermission(android.Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){cameraStatus.setText("Camera permission is required. Tap to allow.");cameraStatus.setOnClickListener(v->requestPermissions(new String[]{android.Manifest.permission.CAMERA},CAMERA_PERMISSION));requestPermissions(new String[]{android.Manifest.permission.CAMERA},CAMERA_PERMISSION);}
+        else if (preview.isAvailable()) openCamera(); else preview.setSurfaceTextureListener(surfaceListener);
     }
 
     @Override protected void onPause() {
@@ -129,7 +134,9 @@ public class BackupCameraActivity extends Activity {
     }
 
     private void openCamera() {
-        if (camera != null || cameraHandler == null) return;
+        if (camera != null || opening || cameraHandler == null) return;
+        if(checkSelfPermission(android.Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{android.Manifest.permission.CAMERA},CAMERA_PERMISSION);return;}
+        opening=true;cameraStatus.setText("Starting front camera…");cameraStatus.setVisibility(View.VISIBLE);
         CameraManager manager = (CameraManager) getSystemService(CAMERA_SERVICE);
         try {
             cameraId = null;
@@ -143,12 +150,12 @@ public class BackupCameraActivity extends Activity {
                     break;
                 }
             }
-            if (cameraId == null) { showNoCamera(); return; }
+            if (cameraId == null) { opening=false;showCameraError("No front-facing camera was found on this phone."); return; }
             if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                finish(); return;
+                opening=false;requestPermissions(new String[]{android.Manifest.permission.CAMERA},CAMERA_PERMISSION); return;
             }
             manager.openCamera(cameraId, cameraState, cameraHandler);
-        } catch (CameraAccessException | SecurityException e) { showNoCamera(); }
+        } catch (CameraAccessException | SecurityException | IllegalArgumentException e) { opening=false;showCameraError("Front camera unavailable. Tap to retry."); }
     }
 
     private android.util.Size chooseSize(android.util.Size[] sizes) {
@@ -173,19 +180,18 @@ public class BackupCameraActivity extends Activity {
             Surface surface = new Surface(texture);
             CaptureRequest.Builder request = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             request.addTarget(surface);
-            request.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
             request.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
             camera.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
                 @Override public void onConfigured(CameraCaptureSession configured) {
                     if (camera == null) return;
                     session = configured;
                     try { session.setRepeatingRequest(request.build(), null, cameraHandler); }
-                    catch (CameraAccessException ignored) { }
+                    catch (CameraAccessException | IllegalStateException ignored) { showCameraError("Preview stopped. Tap to retry."); }
                     preview.post(() -> configureTransform(preview.getWidth(), preview.getHeight()));
                 }
                 @Override public void onConfigureFailed(CameraCaptureSession failed) { showNoCamera(); }
             }, cameraHandler);
-        } catch (CameraAccessException e) { showNoCamera(); }
+        } catch (CameraAccessException | IllegalArgumentException | IllegalStateException e) { showCameraError("Could not create camera preview. Tap to retry."); }
     }
 
     private void configureTransform(int viewWidth, int viewHeight) {
@@ -209,13 +215,14 @@ public class BackupCameraActivity extends Activity {
     private void applyMirror() { preview.setScaleX(mirrored ? -1f : 1f); }
 
     private void closeCamera() {
+        opening=false;
         if (session != null) { session.close(); session = null; }
         if (camera != null) { camera.close(); camera = null; }
     }
 
-    private void showNoCamera() {
-        runOnUiThread(() -> android.widget.Toast.makeText(this, "Front camera is unavailable", android.widget.Toast.LENGTH_LONG).show());
-    }
+    private void showNoCamera() { showCameraError("Front camera is unavailable. Tap to retry."); }
+    private void showCameraError(String message){runOnUiThread(()->{cameraStatus.setText(message);cameraStatus.setVisibility(View.VISIBLE);cameraStatus.setOnClickListener(v->openCamera());});}
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){super.onRequestPermissionsResult(request,permissions,results);if(request==CAMERA_PERMISSION&&results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED){cameraStatus.setOnClickListener(v->openCamera());openCamera();}else if(request==CAMERA_PERMISSION)showCameraError("Camera permission denied. Tap to try again.");}
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
 
