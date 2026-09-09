@@ -32,6 +32,7 @@ import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.speech.RecognitionListener;
@@ -81,6 +82,8 @@ public class MainActivity extends Activity implements LocationListener {
     private AutoNightController nightMode;
     private RoadAwarenessManager roadAwareness;
     private DeliveryCockpit deliveryCockpit;
+    private RideRecorder rideRecorder;
+    private CrashDetector crashDetector;
     private String roadAlert = "";
     private long roadAlertUntil;
     private boolean weatherConsentPrompted,notificationConsentPrompted;
@@ -118,6 +121,9 @@ public class MainActivity extends Activity implements LocationListener {
             }
         });
         deliveryCockpit = new DeliveryCockpit(this);
+        rideRecorder = new RideRecorder(this);
+        crashDetector = new CrashDetector(this,force -> runOnUiThread(this::showCrashCheckIn));
+        crashDetector.setEnabled(prefs.getBoolean("crash_detection",false));
         weatherData = weatherRepository.cached();
         weatherAlert = weatherRepository.cachedAlert();
         speedView = new SpeedView(this);
@@ -399,7 +405,7 @@ public class MainActivity extends Activity implements LocationListener {
         lastGoodLocation = location;
         nightMode.updateLocation(location.getLatitude(), location.getLongitude());
         roadAwareness.update(location, smoothedMps);
-        deliveryCockpit.updateMileage(location);
+        deliveryCockpit.updateMileage(location);rideRecorder.update(location);crashDetector.update(location);
         if (prefs.getBoolean("weather_provider_consent", false) &&
                 SystemClock.elapsedRealtime() - lastWeatherRequest > weatherRepository.refreshMs())
             requestWeather(location.getLatitude(),location.getLongitude(),false);
@@ -492,11 +498,14 @@ public class MainActivity extends Activity implements LocationListener {
         view.setGravity(android.view.Gravity.CENTER_VERTICAL); view.setPadding(20, 8, 20, 8);view.setLineSpacing(3,1f);UiKit.card(view);
         view.setMinHeight(Math.round(58 * getResources().getDisplayMetrics().density)); return view;
     }
+    private void showCrashCheckIn(){final Handler timer=new Handler(getMainLooper());final boolean[] answered={false};AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Possible crash detected").setMessage("A hard impact and sudden stop were detected. RiderLink SOS will be sent in 30 seconds unless you confirm that you are okay. This does not contact 911.").setCancelable(false).setPositiveButton("I'M OKAY",(d,w)->answered[0]=true).setNegativeButton("SEND SOS NOW",null).create();dialog.setOnShowListener(x->dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v->{answered[0]=true;sendCrashSos();dialog.dismiss();}));dialog.show();timer.postDelayed(()->{if(!answered[0]){sendCrashSos();if(dialog.isShowing())dialog.dismiss();}},30000);}
+    private void sendCrashSos(){if(lastGoodLocation==null){android.widget.Toast.makeText(this,"Crash check-in triggered, but GPS is not ready",android.widget.Toast.LENGTH_LONG).show();return;}RiderLinkClient c=new RiderLinkClient(this);if(!c.signedIn()){android.widget.Toast.makeText(this,"Crash detected. RiderLink sign-in is required to send nearby SOS alerts.",android.widget.Toast.LENGTH_LONG).show();c.shutdown();return;}c.sendSos(lastGoodLocation.getLatitude(),lastGoodLocation.getLongitude(),"Automatic crash check-in: rider may need assistance",(ok,m,b)->{android.widget.Toast.makeText(this,ok?"RiderLink crash SOS sent":m,android.widget.Toast.LENGTH_LONG).show();c.shutdown();});}
     @Override protected void onDestroy() {
         try{unregisterReceiver(hudReceiver);}catch(Exception ignored){}
         if(speechRecognizer!=null)speechRecognizer.destroy();
         if (weatherVoice != null) weatherVoice.shutdown();
         if (roadAwareness != null) roadAwareness.shutdown();
+        if(crashDetector!=null)crashDetector.stop();
         super.onDestroy();
     }
 
@@ -602,25 +611,29 @@ public class MainActivity extends Activity implements LocationListener {
         }
 
         private void showDashboardCustomizer() {
-            String[] choices = {"Layout & presets", "Appearance & media",
+            String[] choices = {"Ride center", "Layout & presets", "Appearance & media",
                     "Night & road awareness", "Voice & spoken alerts", "Delivery cockpit", "Saved profiles"};
-            String[] details={"Move, resize and apply cockpit layouts","Theme, gauge, album art and weather","Automatic night mode, OLED and hazards","Natural voice, HUD reading and speech controls","Dasher offers, shifts and mileage logging","Save or recall three dashboard arrangements"};
+            String[] details={"Recorder, history, maintenance and crash check-in","Move, resize and apply cockpit layouts","Theme, gauge, album art and weather","Automatic night mode, OLED and hazards","Natural voice, HUD reading and speech controls","Dasher offers, shifts and mileage logging","Save or recall three dashboard arrangements"};
             showPolishedMenu("CUSTOMIZE DASHBOARD","Cockpit settings",choices,details,which -> {
-                        if (which == 0) showLayoutMenu();
-                        else if (which == 1) showAppearanceMenu();
-                        else if (which == 2) showRoadSettings();
-                        else if (which == 3) showVoiceStudio();
-                        else if (which == 4) showDasherSettings();
+                        if (which == 0) showRideCenter();
+                        else if (which == 1) showLayoutMenu();
+                        else if (which == 2) showAppearanceMenu();
+                        else if (which == 3) showRoadSettings();
+                        else if (which == 4) showVoiceStudio();
+                        else if (which == 5) showDasherSettings();
                         else showProfilesMenu();
                     });
         }
+
+        private void showRideCenter(){boolean recording=rideRecorder.active(),crash=prefs.getBoolean("crash_detection",false);org.json.JSONArray history=rideRecorder.history();String last=history.length()==0?"No completed rides":rideRecorder.summary(history.optJSONObject(history.length()-1));String[] choices={recording?"Stop & save current ride":"Start ride recording","Ride history","Export ride log","Maintenance garage","Crash detection & check-in","RiderLink group rides"};String[] details={recording?"Finish the session and store its GPS trace":"Record route, time, speed and distance",history.length()+" rides • last: "+last,"Share CSV with mileage and ride statistics",String.format(Locale.US,"Service schedule • %.1f recorded miles",rideRecorder.lifetimeMiles()),crash?"ON • impact + sudden-stop detection":"OFF • tap to enable","Create or join a temporary live riding group"};showPolishedMenu("RIDE CENTER","Trips, scooter care and rider safety",choices,details,which->{if(which==0){if(rideRecorder.active()){org.json.JSONObject done=rideRecorder.stop();android.widget.Toast.makeText(MainActivity.this,"Ride saved • "+rideRecorder.summary(done),android.widget.Toast.LENGTH_LONG).show();}else{rideRecorder.start();android.widget.Toast.makeText(MainActivity.this,"Ride recording started",android.widget.Toast.LENGTH_LONG).show();}invalidate();}else if(which==1)showRideHistory();else if(which==2){Intent share=new Intent(Intent.ACTION_SEND);share.setType("text/csv");share.putExtra(Intent.EXTRA_SUBJECT,"Scooter ride log");share.putExtra(Intent.EXTRA_TEXT,rideRecorder.exportCsv());startActivity(Intent.createChooser(share,"Export ride log"));}else if(which==3){Intent garage=new Intent(MainActivity.this,MaintenanceGarageActivity.class);garage.putExtra("miles",rideRecorder.lifetimeMiles());startActivity(garage);}else if(which==4){boolean enabled=!prefs.getBoolean("crash_detection",false);prefs.edit().putBoolean("crash_detection",enabled).apply();crashDetector.setEnabled(enabled);android.widget.Toast.makeText(MainActivity.this,enabled?"Crash check-in enabled":"Crash check-in disabled",android.widget.Toast.LENGTH_LONG).show();}else startActivity(new Intent(MainActivity.this,GroupRideActivity.class));});}
+        private void showRideHistory(){org.json.JSONArray h=rideRecorder.history();String[] rows=new String[h.length()];java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("MMM d, yyyy • h:mm a",Locale.US);for(int i=0;i<h.length();i++){org.json.JSONObject r=h.optJSONObject(h.length()-1-i);rows[i]=(r==null?"Ride":f.format(new java.util.Date(r.optLong("started"))))+"\n"+rideRecorder.summary(r);}if(rows.length==0)rows=new String[]{"No completed rides yet"};new AlertDialog.Builder(MainActivity.this).setTitle("Ride history").setItems(rows,null).setPositiveButton("Done",null).show();}
 
         private void showPolishedMenu(String title,String subtitle,String[] labels,String[] details,MenuHandler handler){
             float density=getResources().getDisplayMetrics().density;LinearLayout panel=new LinearLayout(MainActivity.this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(Math.round(16*density),Math.round(14*density),Math.round(16*density),Math.round(16*density));panel.setBackgroundColor(Color.rgb(4,11,15));
             TextView brand=new TextView(MainActivity.this);brand.setText(title);brand.setTextColor(Color.WHITE);brand.setTextSize(20);brand.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);brand.setLetterSpacing(.035f);panel.addView(brand,new LinearLayout.LayoutParams(-1,Math.round(38*density)));
             TextView intro=new TextView(MainActivity.this);intro.setText(subtitle);intro.setTextColor(UiKit.MUTED);intro.setTextSize(13);intro.setPadding(0,0,0,Math.round(12*density));panel.addView(intro);
             for(int i=0;i<labels.length;i++){final int index=i;LinearLayout row=new LinearLayout(MainActivity.this);row.setGravity(android.view.Gravity.CENTER_VERTICAL);row.setPadding(Math.round(10*density),0,Math.round(12*density),0);UiKit.card(row);TextView icon=new TextView(MainActivity.this);icon.setText(menuIcon(labels[i]));icon.setGravity(android.view.Gravity.CENTER);icon.setTextColor(UiKit.CYAN);icon.setTextSize(21);icon.setBackground(UiKit.rounded(MainActivity.this,Color.rgb(6,48,58),13,Color.rgb(20,92,106)));row.addView(icon,new LinearLayout.LayoutParams(Math.round(48*density),Math.round(48*density)));TextView copy=new TextView(MainActivity.this);copy.setText(labels[i]+"\n"+(details==null?"":details[i]));copy.setTextColor(Color.WHITE);copy.setTextSize(15);copy.setLineSpacing(3,1f);copy.setPadding(Math.round(14*density),0,Math.round(8*density),0);row.addView(copy,new LinearLayout.LayoutParams(0,-1,1));TextView arrow=new TextView(MainActivity.this);arrow.setText("›");arrow.setTextColor(UiKit.MUTED);arrow.setTextSize(28);arrow.setGravity(android.view.Gravity.CENTER);row.addView(arrow,new LinearLayout.LayoutParams(Math.round(28*density),-1));row.setOnClickListener(v->{v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);if(activeMenu!=null)activeMenu.dismiss();handler.select(index);});LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,Math.round(74*density));lp.setMargins(0,0,0,Math.round(9*density));panel.addView(row,lp);}
-            TextView footer=new TextView(MainActivity.this);footer.setText("VERSION 5.7 • NOTIFICATION FIX");footer.setTextColor(Color.rgb(80,115,126));footer.setTextSize(10);footer.setGravity(android.view.Gravity.CENTER);footer.setLetterSpacing(.12f);panel.addView(footer,new LinearLayout.LayoutParams(-1,Math.round(30*density)));
+            TextView footer=new TextView(MainActivity.this);footer.setText("VERSION 6.0 • RIDE CENTER");footer.setTextColor(Color.rgb(80,115,126));footer.setTextSize(10);footer.setGravity(android.view.Gravity.CENTER);footer.setLetterSpacing(.12f);panel.addView(footer,new LinearLayout.LayoutParams(-1,Math.round(30*density)));
             ScrollView scroll=new ScrollView(MainActivity.this);scroll.setFillViewport(true);scroll.addView(panel);activeMenu=new AlertDialog.Builder(MainActivity.this).setView(scroll).setNegativeButton("CLOSE",null).create();activeMenu.setOnShowListener(d->{android.view.Window window=activeMenu.getWindow();if(window!=null){window.setDimAmount(.78f);window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);window.setLayout((int)(getResources().getDisplayMetrics().widthPixels*.95f),WindowManager.LayoutParams.WRAP_CONTENT);}});activeMenu.show();
         }
         private String menuIcon(String label){String s=label.toLowerCase(Locale.US);if(s.contains("profile")||s.contains("rider profile"))return "●";if(s.contains("avatar"))return "◉";if(s.contains("riderlink")||s.contains("map"))return "⌖";if(s.contains("friends")||s.contains("clubs"))return "♟";if(s.contains("notification"))return "◆";if(s.contains("permission"))return "✓";if(s.contains("privacy"))return "▰";if(s.contains("layout")||s.contains("portrait")||s.contains("landscape")||s.contains("drag"))return "▦";if(s.contains("appearance")||s.contains("theme")||s.contains("color")||s.contains("style"))return "◉";if(s.contains("night")||s.contains("road")||s.contains("hazard"))return "☾";if(s.contains("voice")||s.contains("spoken"))return "♫";if(s.contains("delivery")||s.contains("dasher"))return "▣";if(s.contains("weather"))return "☁";if(s.contains("album")||s.contains("media"))return "▶";if(s.contains("save"))return "↓";if(s.contains("load"))return "↑";return "◇";}
@@ -1260,6 +1273,7 @@ public class MainActivity extends Activity implements LocationListener {
             else if (!gpsOn) { status = "TURN ON GPS"; statusColor = Color.rgb(255,179,0); }
             else if (!fresh) { status = "SEARCHING FOR GPS  •  " + satellites + " SAT"; statusColor = Color.rgb(255,179,0); }
             else { status = "GPS LOCK  •  " + satellites + " SAT  •  ±" + Math.round(accuracy) + "m"; statusColor = Color.rgb(74,222,128); }
+            if(rideRecorder.active()){status="● REC  •  "+status;statusColor=UiKit.RED;}
             text(c, status, cx, h * .71f, 17f * scale, statusColor, Paint.Align.CENTER, true);
             c.restoreToCount(gaugeSave);
 
