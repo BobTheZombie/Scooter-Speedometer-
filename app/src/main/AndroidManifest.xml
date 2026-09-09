@@ -15,6 +15,7 @@
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
 
     <application
+        android:name=".ScooterApplication"
         android:allowBackup="true"
         android:hardwareAccelerated="false"
         android:icon="@drawable/ic_launcher"
