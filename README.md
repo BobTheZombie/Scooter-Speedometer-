@@ -20,6 +20,10 @@ Keeps the Android listener bound but inert while monitoring is disabled, avoidin
 
 Adds complete local ride sessions with compact GPS traces, speed/time/distance statistics, history and CSV export; a recorded-mileage maintenance garage with customizable service intervals; conservative high-G plus sudden-stop crash check-ins with a 30-second RiderLink SOS countdown; and temporary RiderLink group rides with expiring invite codes and live member presence.
 
+## Version 6.1 — backup camera reliability
+
+Enables hardware acceleration specifically for the TextureView camera screen, adds direct permission recovery, reliable front-camera lifecycle handling, retryable on-screen errors, camera-in-use guidance, safer capture-session configuration, and clean reopen behavior after rotation or app switching.
+
 A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 
 ## Features
