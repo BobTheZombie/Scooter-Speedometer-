@@ -8,8 +8,8 @@ android {
         applicationId 'com.stankhouse.scooterspeedometer'
         minSdk 23
         targetSdk 35
-        versionCode 41
-        versionName '6.1'
+        versionCode 42
+        versionName '6.2'
     }
 
     buildTypes {
