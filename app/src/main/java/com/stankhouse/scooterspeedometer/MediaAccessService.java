@@ -46,18 +46,16 @@ public class MediaAccessService extends NotificationListenerService {
         if (!categoryEnabled("monitor_delivery",true)||!isDoorDash(sbn) || !getSharedPreferences("speedometer", MODE_PRIVATE).getBoolean("dasher_mode", false)) return;
         Bundle extras = sbn.getNotification().extras;
         String title = value(extras.getCharSequence(Notification.EXTRA_TITLE));
-        String body = value(extras.getCharSequence(Notification.EXTRA_BIG_TEXT));
-        if (TextUtils.isEmpty(body)) body = value(extras.getCharSequence(Notification.EXTRA_TEXT));
+        String body = notificationText(sbn.getNotification());
         String sub = value(extras.getCharSequence(Notification.EXTRA_SUB_TEXT));
-        CharSequence[] lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
-        if (lines != null) for (CharSequence line : lines) if (line != null && !body.contains(line)) body += " • " + line;
         android.content.SharedPreferences prefs = getSharedPreferences("speedometer", MODE_PRIVATE);
-        boolean newOffer = !sbn.getKey().equals(prefs.getString("dasher_key", ""));
+        String offerKey=sbn.getKey()+":"+(title+"|"+body+"|"+sub).hashCode();
+        boolean newOffer = !offerKey.equals(prefs.getString("dasher_key", ""));
         prefs.edit()
-                .putString("dasher_key", sbn.getKey()).putString("dasher_package", sbn.getPackageName())
+                .putString("dasher_key", offerKey).putString("dasher_notification_key",sbn.getKey()).putString("dasher_package", sbn.getPackageName())
                 .putString("dasher_title", title).putString("dasher_body", body)
                 .putString("dasher_sub", sub).putLong("dasher_time", System.currentTimeMillis()).apply();
-        DeliveryCockpit.recordOffer(this, sbn.getKey(), title, body, sub);
+        DeliveryCockpit.recordOffer(this, offerKey, title, body, sub,"notification");
         if (newOffer && prefs.getBoolean("dasher_voice", true) && speechReady) {
             float pay = prefs.getFloat("dasher_offer_pay", 0f), miles = prefs.getFloat("dasher_offer_miles", 0f);
             String restaurant = prefs.getString("dasher_restaurant", title);
@@ -72,7 +70,7 @@ public class MediaAccessService extends NotificationListenerService {
         if(!processingAllowed())return;
         updateHud(sbn,false);
         if (!isDoorDash(sbn)) return;
-        String current = getSharedPreferences("speedometer", MODE_PRIVATE).getString("dasher_key", "");
+        String current = getSharedPreferences("speedometer", MODE_PRIVATE).getString("dasher_notification_key", "");
         if (!sbn.getKey().equals(current)) return;
         getSharedPreferences("speedometer", MODE_PRIVATE).edit().remove("dasher_key")
                 .remove("dasher_title").remove("dasher_body").remove("dasher_sub").apply();
@@ -105,6 +103,7 @@ public class MediaAccessService extends NotificationListenerService {
                 sbn.getPackageName().toLowerCase(java.util.Locale.US).contains("doordash");
     }
     private String value(CharSequence value) { return value == null ? "" : value.toString().trim(); }
+    private String notificationText(Notification notification){java.util.LinkedHashSet<String> values=new java.util.LinkedHashSet<>();Bundle extras=notification.extras;String[] keys={Notification.EXTRA_TEXT,Notification.EXTRA_BIG_TEXT,Notification.EXTRA_SUB_TEXT,Notification.EXTRA_INFO_TEXT,Notification.EXTRA_SUMMARY_TEXT,Notification.EXTRA_TITLE_BIG};for(String key:keys){CharSequence item=extras.getCharSequence(key);if(!TextUtils.isEmpty(item))values.add(item.toString().trim());}CharSequence[] lines=extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);if(lines!=null)for(CharSequence line:lines)if(!TextUtils.isEmpty(line))values.add(line.toString().trim());if(notification.actions!=null)for(Notification.Action action:notification.actions)if(action!=null&&!TextUtils.isEmpty(action.title))values.add(action.title.toString().trim());StringBuilder out=new StringBuilder();for(String item:values){if(out.length()>0)out.append(" • ");out.append(item);}return out.toString();}
 
     @Override public void onDestroy() {
         try{unregisterReceiver(settingsReceiver);}catch(Exception ignored){}
