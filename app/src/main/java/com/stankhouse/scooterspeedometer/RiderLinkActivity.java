@@ -39,13 +39,15 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     private TextView status;
     private boolean mapReady;
     private String lastSosSeen = "";
+    private FlockCameraProvider flockCameras;
+    private long lastFlockRefresh;
     private boolean openProfileRequested;
     private final Runnable publish = new Runnable() {
         @Override public void run() { if (fix != null) refreshNearby(); handler.postDelayed(this, 10000L); }
     };
 
     @Override protected void onCreate(Bundle state) {
-        super.onCreate(state); client = new RiderLinkClient(this); locations = (LocationManager) getSystemService(LOCATION_SERVICE);openProfileRequested=getIntent().getBooleanExtra("open_profile",false);
+        super.onCreate(state); client = new RiderLinkClient(this); flockCameras=new FlockCameraProvider(this); locations = (LocationManager) getSystemService(LOCATION_SERVICE);openProfileRequested=getIntent().getBooleanExtra("open_profile",false);
         Fullscreen.apply(this);
         if (client.signedIn()) showRiderLink(); else showAuthentication();
     }
@@ -196,6 +198,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
             } catch (Exception ignored) { }
         });
         client.nearbyCommunityHazards(fix.getLatitude(),fix.getLongitude(),(ok,message,body)->{if(!ok)return;String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");map.evaluateJavascript("setCommunityHazards('"+safe+"')",null);});
+        if(System.currentTimeMillis()-lastFlockRefresh>15L*60L*1000L){lastFlockRefresh=System.currentTimeMillis();flockCameras.nearby(fix.getLatitude(),fix.getLongitude(),(ok,body,message)->{if(!ok){lastFlockRefresh=0;return;}String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setFlockHopperCameras('"+safe+"')",null);});}
     }
 
     private void beginSosCountdown() {
@@ -225,7 +228,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) { super.onRequestPermissionsResult(requestCode, permissions, results); if (requestCode == 77 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) startLocation(); }
     @Override protected void onPause() { super.onPause(); if (sharing != null && sharing.isChecked()) status.setText("Sharing pauses when RiderLink closes"); }
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) Fullscreen.apply(this); }
-    @Override protected void onDestroy() { handler.removeCallbacksAndMessages(null); try { locations.removeUpdates(this); } catch (SecurityException ignored) { } if (client != null) client.shutdown(); if (map != null) map.destroy(); super.onDestroy(); }
+    @Override protected void onDestroy() { handler.removeCallbacksAndMessages(null); try { locations.removeUpdates(this); } catch (SecurityException ignored) { } if (client != null) client.shutdown(); if(flockCameras!=null)flockCameras.shutdown(); if (map != null) map.destroy(); super.onDestroy(); }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private int systemBarHeight(String name){int id=getResources().getIdentifier(name,"dimen","android");return id>0?getResources().getDimensionPixelSize(id):0;}
     private void toast(String value) { Toast.makeText(this, value, Toast.LENGTH_LONG).show(); }
