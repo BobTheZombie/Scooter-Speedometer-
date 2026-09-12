@@ -305,6 +305,16 @@ public class MainActivity extends Activity implements LocationListener {
         if (isPlaying()) mediaController.getTransportControls().pause(); else mediaController.getTransportControls().play();
     }
     private void mediaNext() { if (mediaController != null) mediaController.getTransportControls().skipToNext(); }
+    private void openActiveMediaApp() {
+        if(mediaController==null){android.widget.Toast.makeText(this,"Start music first, then tap the media card",android.widget.Toast.LENGTH_SHORT).show();return;}
+        String packageName=mediaController.getPackageName();
+        try{
+            Intent launch=getPackageManager().getLaunchIntentForPackage(packageName);
+            if(launch==null)launch=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(packageName);
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+            startActivity(launch);
+        }catch(Exception error){android.widget.Toast.makeText(this,"Could not open the active music app",android.widget.Toast.LENGTH_LONG).show();}
+    }
     private void adjustMusicVolume(int direction) {
         audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0);
         speedView.invalidate();
@@ -989,6 +999,8 @@ public class MainActivity extends Activity implements LocationListener {
             text(c, ellipsize(title, 25), infoX, top + 39f * scale, 20f * scale, Color.WHITE, Paint.Align.LEFT, true);
             text(c, ellipsize(artist, 28), infoX, top + 65f * scale, 14f * scale,
                     Color.rgb(186, 204, 213), Paint.Align.LEFT, false);
+            text(c, "TAP NOW PLAYING TO OPEN", infoX, top + 84f * scale, 8f * scale,
+                    Color.rgb(105, 150, 164), Paint.Align.LEFT, true);
             float buttonY = bottom - 34f * scale;
             text(c, audioRack.eqEnabled() ? "EQ•" : "EQ", w * .34f, buttonY, 13f * scale,
                     audioRack.eqEnabled() ? accentColor() : Color.rgb(175,195,204), Paint.Align.CENTER, true);
@@ -1538,7 +1550,7 @@ public class MainActivity extends Activity implements LocationListener {
                         else if (sourceX < w * .695f) mediaPlayPause();
                         else if (sourceX < w * .805f) mediaNext();
                         else showMediaVolumeSlider();
-                    }
+                    } else openActiveMediaApp();
                 } else if (navigationSlot.contains(e.getX(), e.getY())) {
                     beginNavigation();
                 } else if (e.getY() >= h * .25f && e.getY() <= h * .37f &&
