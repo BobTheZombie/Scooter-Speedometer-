@@ -132,26 +132,22 @@ public class RiderLinkClient {
     private void request(String method, String path, String body, boolean auth, Callback callback) { request(method, path, body, auth, callback, null); }
     private void request(String method, String path, String body, boolean auth, Callback callback, String prefer) {
         worker.execute(() -> {
-            HttpURLConnection connection = null; boolean ok = false; String response = ""; String message;
+            boolean ok = false; String response = ""; String message;
             try {
-                connection = (HttpURLConnection) new URL(URL + path).openConnection(); connection.setRequestMethod(method);
-                connection.setConnectTimeout(9000); connection.setReadTimeout(10000); connection.setRequestProperty("apikey", KEY);
-                connection.setRequestProperty("Content-Type", "application/json");
-                if (auth) connection.setRequestProperty("Authorization", "Bearer " + prefs.getString("access", ""));
-                if (prefer != null) connection.setRequestProperty("Prefer", prefer);
-                if (body != null) { connection.setDoOutput(true); byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-                    try (OutputStream out = connection.getOutputStream()) { out.write(bytes); } }
-                int code = connection.getResponseCode(); ok = code >= 200 && code < 300;
-                InputStream stream = ok ? connection.getInputStream() : connection.getErrorStream();
-                if (stream != null) { BufferedReader reader = new BufferedReader(new InputStreamReader(stream)); StringBuilder text = new StringBuilder();
-                    String line; while ((line = reader.readLine()) != null) text.append(line); response = text.toString(); reader.close(); }
-                message = ok ? "Done" : parseError(response, "RiderLink request failed (" + code + ")");
+                if(auth&&System.currentTimeMillis()>=prefs.getLong("expires_at",0)-120000L&&!refreshTokenBlocking())throw new Exception("RiderLink session expired. Sign in again.");
+                Response result=perform(method,path,body,auth,prefer);
+                if(auth&&(result.code==401||jwtExpired(result.body))&&refreshTokenBlocking())result=perform(method,path,body,true,prefer);
+                ok=result.code>=200&&result.code<300;response=result.body;
+                message=ok?"Done":parseError(response,result.code==401?"RiderLink session expired. Sign in again.":"RiderLink request failed ("+result.code+")");
             } catch (Exception e) { message = e.getMessage() == null ? "Network error" : e.getMessage(); }
-            finally { if (connection != null) connection.disconnect(); }
             final boolean deliveredOk = ok; final String deliveredMessage = message, deliveredBody = response;
             main.post(() -> callback.complete(deliveredOk, deliveredMessage, deliveredBody));
         });
     }
+    private Response perform(String method,String path,String body,boolean auth,String prefer)throws Exception{HttpURLConnection connection=(HttpURLConnection)new URL(URL+path).openConnection();try{connection.setRequestMethod(method);connection.setConnectTimeout(9000);connection.setReadTimeout(10000);connection.setRequestProperty("apikey",KEY);connection.setRequestProperty("Content-Type","application/json");if(auth)connection.setRequestProperty("Authorization","Bearer "+prefs.getString("access",""));if(prefer!=null)connection.setRequestProperty("Prefer",prefer);if(body!=null){connection.setDoOutput(true);byte[] bytes=body.getBytes(StandardCharsets.UTF_8);try(OutputStream out=connection.getOutputStream()){out.write(bytes);}}int code=connection.getResponseCode();InputStream stream=code>=200&&code<300?connection.getInputStream():connection.getErrorStream();String response="";if(stream!=null){BufferedReader reader=new BufferedReader(new InputStreamReader(stream));StringBuilder text=new StringBuilder();String line;while((line=reader.readLine())!=null)text.append(line);reader.close();response=text.toString();}return new Response(code,response);}finally{connection.disconnect();}}
+    private boolean refreshTokenBlocking(){String refresh=prefs.getString("refresh","");if(refresh.isEmpty())return false;try{Response response=perform("POST","/auth/v1/token?grant_type=refresh_token",new JSONObject().put("refresh_token",refresh).toString(),false,null);if(response.code<200||response.code>=300)return false;JSONObject root=new JSONObject(response.body);String access=root.optString("access_token","");if(access.isEmpty())return false;prefs.edit().putString("access",access).putString("refresh",root.optString("refresh_token",refresh)).putLong("expires_at",System.currentTimeMillis()+root.optLong("expires_in",3600)*1000L).apply();return true;}catch(Exception ignored){return false;}}
+    private boolean jwtExpired(String body){String value=body==null?"":body.toLowerCase(java.util.Locale.US);return value.contains("jwt expired")||value.contains("token is expired")||value.contains("invalid jwt");}
+    private static class Response{final int code;final String body;Response(int code,String body){this.code=code;this.body=body;}}
     private String parseError(String body, String fallback) {
         try { JSONObject error = new JSONObject(body); return error.optString("msg", error.optString("message", fallback)); }
         catch (Exception ignored) { return fallback; }
