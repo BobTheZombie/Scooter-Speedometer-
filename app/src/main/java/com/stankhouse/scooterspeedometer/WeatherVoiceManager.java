@@ -2,7 +2,12 @@ package com.stankhouse.scooterspeedometer;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.media.AudioAttributes;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
+import android.os.Build;
 import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
 import android.speech.tts.Voice;
 
 import java.util.ArrayList;
@@ -14,14 +19,23 @@ import java.util.Locale;
 /** Cooldown-aware spoken forecast and official-alert announcer. */
 public class WeatherVoiceManager implements TextToSpeech.OnInitListener {
     public interface VoicesCallback { void onVoices(List<Voice> voices); }
-    private static final long FORECAST_COOLDOWN = 45 * 60 * 1000L;
+    private static final long FORECAST_COOLDOWN = 20 * 60 * 1000L;
     private final SharedPreferences prefs;
     private final TextToSpeech speech;
+    private final AudioManager audioManager;
+    private AudioFocusRequest focusRequest;
+    private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> { };
     private boolean ready;
 
     public WeatherVoiceManager(Context context) {
         prefs = context.getSharedPreferences("weather_voice", Context.MODE_PRIVATE);
+        audioManager = (AudioManager) context.getApplicationContext().getSystemService(Context.AUDIO_SERVICE);
         speech = new TextToSpeech(context.getApplicationContext(), this);
+        speech.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+            @Override public void onStart(String utteranceId) { }
+            @Override public void onDone(String utteranceId) { releaseAudioFocus(); }
+            @Override public void onError(String utteranceId) { releaseAudioFocus(); }
+        });
     }
 
     @Override public void onInit(int status) {
@@ -49,22 +63,26 @@ public class WeatherVoiceManager implements TextToSpeech.OnInitListener {
     public void preview(){if(ready){applySettings();speech.speak("Rider Link voice check. Rain is expected in fifteen minutes.",TextToSpeech.QUEUE_FLUSH,null,"voice_preview");}}
 
     public boolean enabled() { return prefs.getBoolean("enabled", true); }
+    public boolean imminentEnabled(){return prefs.getBoolean("imminent_enabled",true);}
+    public void setImminentEnabled(boolean value){prefs.edit().putBoolean("imminent_enabled",value).apply();}
     public void setEnabled(boolean enabled) {
         prefs.edit().putBoolean("enabled", enabled).apply();
         if (!enabled) speech.stop();
     }
 
     public void announceForecast(WeatherRepository.WeatherData weather) {
-        if (!ready || !enabled() || weather == null) return;
+        if (!ready || !enabled() || !imminentEnabled() || weather == null) return;
         String key = "";
         String message = "";
-        if (weather.precipitationMinutes > 0 && weather.precipitationMinutes <= 60) {
+        if (weather.precipitationMinutes >= 0 && weather.precipitationMinutes <= 60) {
             int code = weather.precipitationCode;
             String kind = code >= 95 ? "Thunderstorms" :
                     ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) ? "Snow" : "Rain";
-            key = kind + ":" + weather.precipitationMinutes;
-            message = kind + " expected in approximately " + weather.precipitationMinutes + " minutes. " +
-                    weather.precipitationChance + " percent chance.";
+            int stage=weather.precipitationMinutes<=20?15:weather.precipitationMinutes<=40?30:60;
+            long event=weather.precipitationStartAt>0?weather.precipitationStartAt/(15*60*1000L):0;
+            key = kind + ":" + event + ":" + stage;
+            message = weather.precipitationMinutes<=2?kind+" is expected to begin very soon. ":kind + " expected in approximately " + (stage==15?15:stage==30?30:weather.precipitationMinutes) + " minutes. ";
+            message += weather.precipitationChance + " percent chance.";
         } else if (weather.upcomingWindGust >= 35) {
             key = "wind:" + Math.round(weather.upcomingWindGust / 5) * 5;
             message = "Weather warning. Wind gusts near " + Math.round(weather.upcomingWindGust) +
@@ -86,8 +104,31 @@ public class WeatherVoiceManager implements TextToSpeech.OnInitListener {
     }
 
     private void speak(String value, String utteranceId) {
+        requestDuckingAudioFocus();
         speech.speak(value, TextToSpeech.QUEUE_ADD, null, utteranceId);
     }
 
-    public void shutdown() { speech.stop(); speech.shutdown(); }
+    private void requestDuckingAudioFocus() {
+        if (audioManager == null) return;
+        if (Build.VERSION.SDK_INT >= 26) {
+            AudioAttributes attributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
+            focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(attributes).setOnAudioFocusChangeListener(focusListener)
+                    .setWillPauseWhenDucked(false).build();
+            audioManager.requestAudioFocus(focusRequest);
+        } else {
+            audioManager.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
+        }
+    }
+
+    private void releaseAudioFocus() {
+        if (audioManager == null) return;
+        if (Build.VERSION.SDK_INT >= 26 && focusRequest != null) audioManager.abandonAudioFocusRequest(focusRequest);
+        else audioManager.abandonAudioFocus(focusListener);
+    }
+
+    public void shutdown() { speech.stop(); releaseAudioFocus(); speech.shutdown(); }
 }
