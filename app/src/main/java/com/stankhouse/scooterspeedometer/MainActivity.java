@@ -203,13 +203,14 @@ public class MainActivity extends Activity implements LocationListener {
     private void showWeatherSettings() {
         String enabled=prefs.getBoolean("weather_provider_consent",false)?"Enabled":"Disabled";
         String keyState=prefs.getString("accuweather_api_key","").isEmpty()?"Not configured":"Configured";
-        String[] items={"Live weather  •  "+enabled,"Provider  •  "+weatherRepository.providerName(),"Location  •  "+weatherRepository.locationName(),"Refresh  •  "+(weatherRepository.refreshMs()/60000L)+" minute(s)","AccuWeather API key  •  "+keyState,"Refresh now"};
+        String[] items={"Live weather  •  "+enabled,"Imminent voice alerts  •  "+(weatherVoice.imminentEnabled()?"ON":"OFF"),"Provider  •  "+weatherRepository.providerName(),"Location  •  "+weatherRepository.locationName(),"Refresh  •  "+(weatherRepository.refreshMs()/60000L)+" minute(s)","AccuWeather API key  •  "+keyState,"Refresh now"};
         new AlertDialog.Builder(this).setTitle("Live weather & Sense background").setItems(items,(d,which)->{
             if(which==0){boolean next=!prefs.getBoolean("weather_provider_consent",false);prefs.edit().putBoolean("weather_provider_consent",next).apply();if(next)requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);else speedView.invalidate();}
-            else if(which==1)showWeatherProviderPicker();
-            else if(which==2)showWeatherLocationPicker();
-            else if(which==3)showWeatherRefreshPicker();
-            else if(which==4)showAccuWeatherKeyDialog();
+            else if(which==1){weatherVoice.setImminentEnabled(!weatherVoice.imminentEnabled());showWeatherSettings();}
+            else if(which==2)showWeatherProviderPicker();
+            else if(which==3)showWeatherLocationPicker();
+            else if(which==4)showWeatherRefreshPicker();
+            else if(which==5)showAccuWeatherKeyDialog();
             else requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);
         }).setNegativeButton("Done",null).show();
     }
@@ -1003,7 +1004,9 @@ public class MainActivity extends Activity implements LocationListener {
                 text(c, ellipsize(weatherData.condition(), Math.max(9, Math.round(17 * weatherWidthFraction / .355f))),
                         left + pw * .30f, top + ph * .84f, 11f * scale * panelScale,
                         secondary, Paint.Align.LEFT, false);
-                text(c, "☂ " + weatherData.rainChance + "%", left + pw * .68f, top + ph * .43f,
+                String imminent = weatherData.upcomingLabel();
+                text(c, imminent.isEmpty() ? "☂ " + weatherData.rainChance + "%" : "⚠ " + imminent,
+                        left + pw * .68f, top + ph * .43f,
                         12f * scale * panelScale, accent, Paint.Align.LEFT, true);
                 text(c, String.format(Locale.US, "%s %.0f mph", weatherData.windCompass(), weatherData.windSpeed),
                         left + pw * .68f, top + ph * .78f, 11f * scale * panelScale,
