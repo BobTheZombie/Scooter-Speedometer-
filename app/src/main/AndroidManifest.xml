@@ -14,6 +14,19 @@
     <uses-feature android:name="android.hardware.location.gps" android:required="true" />
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
 
+    <queries>
+        <intent><action android:name="android.media.action.DISPLAY_AUDIO_EFFECT_CONTROL_PANEL" /></intent>
+        <package android:name="com.sec.android.app.soundalive" />
+        <package android:name="com.samsung.android.soundassistant" />
+        <package android:name="com.oneplus.sound.tuner" />
+        <package android:name="com.oplus.audio.effectcenter" />
+        <package android:name="com.oplus.audio" />
+        <package android:name="com.lge.audioeffect" />
+        <package android:name="com.lge.music" />
+        <package android:name="com.motorola.audiofx" />
+        <package android:name="com.motorola.dolby.dolbyui" />
+    </queries>
+
     <application
         android:name=".ScooterApplication"
         android:allowBackup="true"
