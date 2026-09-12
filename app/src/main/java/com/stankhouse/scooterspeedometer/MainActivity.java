@@ -736,6 +736,8 @@ public class MainActivity extends Activity implements LocationListener {
             TextView permission = settingsAction("Notification access",
                     hasMediaAccess() ? "Granted" : "Tap here to grant access");
             panel.addView(permission);
+            boolean screenCapture=android.provider.Settings.Secure.getString(getContentResolver(),android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)!=null&&android.provider.Settings.Secure.getString(getContentResolver(),android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).contains(getPackageName()+"/"+DasherAccessibilityService.class.getName());
+            TextView deepCapture=settingsAction("Full offer-screen capture",screenCapture?"Enabled • reads only the DoorDash Dasher screen during an active shift":"Optional • tap to enable in Android Accessibility settings");panel.addView(deepCapture);
             TextView open = settingsAction("Open DoorDash Dasher", "Accept and manage deliveries securely");
             panel.addView(open);
             TextView privacy = settingsAction("Privacy", "Order notifications stay only on this phone");
@@ -751,6 +753,7 @@ public class MainActivity extends Activity implements LocationListener {
             shift.setOnCheckedChangeListener((button, checked) -> { deliveryCockpit.setShiftActive(checked); invalidate(); });
             voice.setOnCheckedChangeListener((button, checked) -> prefs.edit().putBoolean("dasher_voice", checked).apply());
             permission.setOnClickListener(v -> openMediaAccessSettings());
+            deepCapture.setOnClickListener(v->{prefs.edit().putBoolean("dasher_screen_capture",true).apply();startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));});
             open.setOnClickListener(v -> openDasherApp());
         }
 
@@ -772,6 +775,7 @@ public class MainActivity extends Activity implements LocationListener {
             int items = prefs.getInt("dasher_offer_items", 0), minutes = prefs.getInt("dasher_offer_minutes", 0);
             String restaurant = prefs.getString("dasher_restaurant", title);
             String pickup = prefs.getString("dasher_pickup", ""), dropoff = prefs.getString("dasher_dropoff", "");
+            String captureSource=prefs.getString("dasher_capture_source","notification"),missing=prefs.getString("dasher_missing_fields","");
             long age = System.currentTimeMillis() - prefs.getLong("dasher_time", 0L);
             boolean active = (!TextUtils.isEmpty(title) || !TextUtils.isEmpty(body)) && age < 30L * 60L * 1000L;
             dasherCard.set(w * .025f, h * .245f, w * .975f, h * .405f);
@@ -797,6 +801,7 @@ public class MainActivity extends Activity implements LocationListener {
                         10f * scale, Color.rgb(235,238,240), Paint.Align.LEFT, false);
                 text(c, "DROP  " + ellipsize(TextUtils.isEmpty(dropoff) ? "Open Dasher for address" : dropoff, 57), w * .055f, h * .369f,
                         10f * scale, Color.rgb(235,238,240), Paint.Align.LEFT, false);
+                if(!TextUtils.isEmpty(missing))text(c,"CAPTURED VIA "+captureSource.toUpperCase(Locale.US)+" • MISSING: "+ellipsize(missing,38),w*.945f,h*.383f,7f*scale,Color.rgb(255,195,205),Paint.Align.RIGHT,true);
             } else {
                 text(c, hasMediaAccess() ? "Waiting for DoorDash orders…" : "Tap to grant notification access",
                         w * .055f, h * .315f, 14f * scale, Color.rgb(175,194,202), Paint.Align.LEFT, false);
