@@ -53,6 +53,8 @@ public final class FlockCameraProvider {
         HttpURLConnection connection = (HttpURLConnection) new URL(INDEX_URL).openConnection();
         connection.setConnectTimeout(10000); connection.setReadTimeout(20000);
         connection.setRequestProperty("User-Agent", "Scooter-Speedometer/6.3 (github.com/BobTheZombie/Scooter-Speedometer-)");
+        connection.setRequestProperty("Accept", "application/octet-stream");
+        connection.setRequestProperty("Referer", "https://dontgetflocked.com/");
         try {
             if (connection.getResponseCode() != 200) throw new Exception("Camera feed HTTP " + connection.getResponseCode());
             byte[] bytes = readAll(connection.getInputStream()); validate(bytes);
