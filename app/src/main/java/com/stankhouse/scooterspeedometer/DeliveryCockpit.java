@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
 /** Local-only DoorDash offer metrics and GPS mileage log. */
 public class DeliveryCockpit {
     private static final Pattern PAY = Pattern.compile("\\$\\s*([0-9]+(?:\\.[0-9]{1,2})?)");
+    private static final Pattern LABELED_PAY = Pattern.compile("(?:guaranteed|total|offer|earnings?|pay(?:out)?)[^$0-9]{0,28}\\$\\s*([0-9]+(?:\\.[0-9]{1,2})?)",Pattern.CASE_INSENSITIVE);
     private static final Pattern MILES = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)\\s*(?:mi|mile|miles)\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern TIP = Pattern.compile("(?:tip|customer tip)\\s*[:+$-]*\\s*\\$?([0-9]+(?:\\.[0-9]{1,2})?)", Pattern.CASE_INSENSITIVE);
     private static final Pattern ITEMS = Pattern.compile("([0-9]+)\\s*items?\\b", Pattern.CASE_INSENSITIVE);
@@ -30,9 +31,12 @@ public class DeliveryCockpit {
     }
 
     public static void recordOffer(Context context, String key, String title, String body, String sub) {
+        recordOffer(context,key,title,body,sub,"notification");
+    }
+    public static void recordOffer(Context context, String key, String title, String body, String sub,String source) {
         SharedPreferences p = context.getSharedPreferences("speedometer", Context.MODE_PRIVATE);
         String all = title + "  " + body + "  " + sub;
-        double pay = number(PAY.matcher(all));
+        double pay = number(LABELED_PAY.matcher(all));if(pay<=0)pay=number(PAY.matcher(all));
         double miles = number(MILES.matcher(all));
         double tip = number(TIP.matcher(all));
         int items = integer(ITEMS.matcher(all));
@@ -47,6 +51,7 @@ public class DeliveryCockpit {
                 .putFloat("dasher_offer_tip", (float) tip).putInt("dasher_offer_items", items)
                 .putInt("dasher_offer_minutes", minutes).putString("dasher_restaurant", clean(restaurant))
                 .putString("dasher_pickup", clean(pickup)).putString("dasher_dropoff", clean(dropoff))
+                .putString("dasher_capture_source",source).putString("dasher_missing_fields",missing(pay,miles,tip,items,pickup,dropoff))
                 .putString("dasher_offer_raw", clean(all))
                 .putFloat("dasher_offer_per_mile", miles > 0 ? (float) (pay / miles) : 0f).apply();
         DeliveryCockpit cockpit = new DeliveryCockpit(context);
@@ -67,6 +72,7 @@ public class DeliveryCockpit {
     }
     private static String group(Matcher matcher) { return matcher.find() ? matcher.group(1) : ""; }
     private static String clean(String value) { return value == null ? "" : value.trim().replaceAll("\\s+", " "); }
+    private static String missing(double pay,double miles,double tip,int items,String pickup,String dropoff){StringBuilder out=new StringBuilder();if(pay<=0)out.append("pay, ");if(miles<=0)out.append("distance, ");if(tip<=0)out.append("tip, ");if(items<=0)out.append("items, ");if(pickup.isEmpty())out.append("pickup, ");if(dropoff.isEmpty())out.append("drop-off, ");return out.length()==0?"":out.substring(0,out.length()-2);}
 
     private void ensureToday() {
         String today = new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
