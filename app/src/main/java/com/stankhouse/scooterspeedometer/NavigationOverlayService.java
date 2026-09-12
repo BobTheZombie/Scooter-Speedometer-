@@ -205,7 +205,7 @@ public class NavigationOverlayService extends Service implements LocationListene
         float filtered = speedFilter.update(location);
         if (Float.isNaN(filtered)) return;
         smoothedMps = filtered;
-        if (android.os.SystemClock.elapsedRealtime() - lastWeatherRequest > 60000L) {
+        if (getSharedPreferences("speedometer",MODE_PRIVATE).getBoolean("weather_provider_consent",false) && android.os.SystemClock.elapsedRealtime() - lastWeatherRequest > weatherRepository.refreshMs()) {
             lastWeatherRequest = android.os.SystemClock.elapsedRealtime();
             weatherRepository.update(location.getLatitude(), location.getLongitude(), data -> {
                 weatherData = data;
@@ -313,8 +313,9 @@ public class NavigationOverlayService extends Service implements LocationListene
             } else if (weatherData != null) {
                 text(c, weatherData.icon() + " " + String.format(java.util.Locale.US, "%.0f°", weatherData.temperature),
                         w * .34f, h * .18f, dp(13), Color.rgb(255, 220, 110), Paint.Align.LEFT, true);
-                text(c, "☂" + weatherData.rainChance + "%  " + weatherData.windCompass() + " " +
-                                String.format(java.util.Locale.US, "%.0f", weatherData.windSpeed) + "mph",
+                String imminent = weatherData.upcomingLabel();
+                text(c, (imminent.isEmpty() ? "☂" + weatherData.rainChance + "%" : "⚠ " + imminent) +
+                                "  " + weatherData.windCompass() + " " + String.format(java.util.Locale.US, "%.0f", weatherData.windSpeed) + "mph",
                         w * .48f, h * .18f, dp(11), Color.rgb(205, 220, 228), Paint.Align.LEFT, false);
             }
 
