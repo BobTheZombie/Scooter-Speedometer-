@@ -32,6 +32,8 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -54,6 +56,10 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private long lastRouteRequest;
     private FlockCameraProvider flockCameras;
     private long lastFlockRefresh;
+    private final List<CameraPoint> cameraPoints = new ArrayList<>();
+    private final List<RoutePoint> routePoints = new ArrayList<>();
+    private final Map<String,Long> cameraWarningTimes = new HashMap<>();
+    private long lastCameraWarning;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -102,6 +108,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     }
     @Override public void onLocationChanged(Location location) {
         currentLocation = location; updateMapLocation(location);
+        checkCameraWarnings(location);
         if (!hasDestination && destinationQuery != null) geocodeAndRoute();
         else if (hasDestination) updateGuidance(location);
     }
@@ -110,7 +117,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         map.evaluateJavascript(String.format(Locale.US, "updateLocation(%.7f,%.7f,%.1f,%.1f)",
                 location.getLatitude(), location.getLongitude(), location.hasBearing() ? location.getBearing() : 0,
                 location.hasAccuracy() ? location.getAccuracy() : 20), null);
-        if(System.currentTimeMillis()-lastFlockRefresh>15L*60L*1000L){lastFlockRefresh=System.currentTimeMillis();flockCameras.nearby(location.getLatitude(),location.getLongitude(),(ok,body,message)->{if(!ok){lastFlockRefresh=0;return;}String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setFlockHopperCameras('"+safe+"')",null);});}
+        if(System.currentTimeMillis()-lastFlockRefresh>15L*60L*1000L){lastFlockRefresh=System.currentTimeMillis();flockCameras.nearby(location.getLatitude(),location.getLongitude(),(ok,body,message)->{if(!ok){lastFlockRefresh=0;return;}applyCameraData(body);String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setFlockHopperCameras('"+safe+"')",null);});}
     }
     private void geocodeAndRoute() {
         String query = destinationQuery; destinationQuery = null;
@@ -138,7 +145,8 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
                 connection = open(new URL(endpoint)); JSONObject route = new JSONObject(read(connection)).getJSONArray("routes").getJSONObject(0);
                 String geometry = route.getJSONObject("geometry").toString(); double distance = route.getDouble("distance"), duration = route.getDouble("duration");
                 List<RouteStep> parsed = parseSteps(route.getJSONArray("legs").getJSONObject(0).getJSONArray("steps"));
-                main.post(() -> applyRoute(geometry, parsed, distance, duration));
+                List<RoutePoint> routeShape=parseRouteShape(route.getJSONObject("geometry"));
+                main.post(() -> applyRoute(geometry, parsed, routeShape, distance, duration));
             } catch (Exception error) { main.post(() -> showError("Route unavailable: " + error.getMessage())); }
             finally { if (connection != null) connection.disconnect(); }
         });
@@ -159,12 +167,27 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         }
         return result;
     }
-    private void applyRoute(String geometry, List<RouteStep> parsed, double distance, double duration) {
+    private List<RoutePoint> parseRouteShape(JSONObject geometry)throws Exception{List<RoutePoint> result=new ArrayList<>();JSONArray coordinates=geometry.getJSONArray("coordinates");for(int i=0;i<coordinates.length();i++){JSONArray p=coordinates.getJSONArray(i);result.add(new RoutePoint(p.getDouble(1),p.getDouble(0)));}return result;}
+    private void applyRoute(String geometry, List<RouteStep> parsed, List<RoutePoint> shape, double distance, double duration) {
         steps.clear(); steps.addAll(parsed); stepIndex = Math.min(1, Math.max(0, steps.size() - 1)); lastSpokenStep = -1;
+        routePoints.clear();routePoints.addAll(shape);
         if (mapReady) map.evaluateJavascript("setRoute(" + geometry + ")", null);
         tripInfo.setText(String.format(Locale.US, "%.1f mi  •  %d min  •  OPENSTREETMAP", distance / 1609.344, Math.round(duration / 60)));
         if (!steps.isEmpty()) instruction.setText(steps.get(stepIndex).instruction);
     }
+    private void applyCameraData(String body){cameraPoints.clear();try{JSONArray list=new JSONArray(body);for(int i=0;i<list.length();i++){JSONObject p=list.getJSONObject(i);cameraPoints.add(new CameraPoint(p.getDouble("latitude"),p.getDouble("longitude")));}if(currentLocation!=null)checkCameraWarnings(currentLocation);}catch(Exception ignored){}}
+    private void checkCameraWarnings(Location location){
+        if(!speechReady||cameraPoints.isEmpty()||location.getSpeed()<1.5f)return;long now=System.currentTimeMillis();if(now-lastCameraWarning<12000L)return;
+        CameraPoint best=null;float bestDistance=Float.MAX_VALUE;float heading=location.hasBearing()?location.getBearing():routeHeading(location);
+        for(CameraPoint camera:cameraPoints){float[] d=new float[2];Location.distanceBetween(location.getLatitude(),location.getLongitude(),camera.lat,camera.lon,d);if(d[0]>152.4f||d[0]>=bestDistance)continue;
+            float delta=Math.abs(((d[1]-heading+540f)%360f)-180f);if(delta>75f)continue;if(!routePoints.isEmpty()&&distanceToRouteMeters(camera)>65d)continue;
+            String key=camera.key();Long warned=cameraWarningTimes.get(key);if(warned!=null&&now-warned<20L*60L*1000L)continue;best=camera;bestDistance=d[0];}
+        if(best==null)return;String key=best.key();cameraWarningTimes.put(key,now);lastCameraWarning=now;int feet=Math.max(100,Math.round((bestDistance*3.28084f)/50f)*50);String warning="Reported plate reader ahead in "+feet+" feet";
+        speech.speak(warning,TextToSpeech.QUEUE_ADD,null,"alpr_"+key);if(mapReady)map.evaluateJavascript(String.format(Locale.US,"highlightFlock(%.7f,%.7f)",best.lat,best.lon),null);
+    }
+    private float routeHeading(Location location){if(stepIndex<steps.size()){RouteStep s=steps.get(stepIndex);float[] d=new float[2];Location.distanceBetween(location.getLatitude(),location.getLongitude(),s.latitude,s.longitude,d);return d[1];}return 0f;}
+    private double distanceToRouteMeters(CameraPoint c){double best=Double.MAX_VALUE;for(int i=1;i<routePoints.size();i++){best=Math.min(best,segmentDistanceMeters(c,routePoints.get(i-1),routePoints.get(i)));if(best<=20d)return best;}return best;}
+    private double segmentDistanceMeters(CameraPoint p,RoutePoint a,RoutePoint b){double scale=Math.cos(Math.toRadians(p.lat));double ax=(a.lon-p.lon)*111320d*scale,ay=(a.lat-p.lat)*111320d,bx=(b.lon-p.lon)*111320d*scale,by=(b.lat-p.lat)*111320d;double vx=bx-ax,vy=by-ay,den=vx*vx+vy*vy,t=den==0?0:Math.max(0,Math.min(1,-(ax*vx+ay*vy)/den));return Math.hypot(ax+t*vx,ay+t*vy);}
     private void updateGuidance(Location location) {
         if (steps.isEmpty()) return; RouteStep step = steps.get(Math.min(stepIndex, steps.size() - 1)); float[] result = new float[1];
         Location.distanceBetween(location.getLatitude(), location.getLongitude(), step.latitude, step.longitude, result); float metres = result[0];
@@ -182,4 +205,6 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     @Override public void onProviderDisabled(String provider) { }
     @Override public void onStatusChanged(String provider, int status, Bundle extras) { }
     private static class RouteStep { final double latitude, longitude; final String instruction; RouteStep(double latitude, double longitude, String instruction) { this.latitude = latitude; this.longitude = longitude; this.instruction = instruction; } }
+    private static class RoutePoint{final double lat,lon;RoutePoint(double a,double o){lat=a;lon=o;}}
+    private static class CameraPoint{final double lat,lon;CameraPoint(double a,double o){lat=a;lon=o;}String key(){return String.format(Locale.US,"%.5f,%.5f",lat,lon);}}
 }
