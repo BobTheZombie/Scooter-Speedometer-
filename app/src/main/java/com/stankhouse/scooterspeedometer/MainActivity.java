@@ -405,18 +405,7 @@ public class MainActivity extends Activity implements LocationListener {
     }
 
     private void showDestinationDialog() {
-        final EditText destination = new EditText(this);
-        destination.setHint("Address, business, or destination");
-        destination.setSingleLine(true);
-        destination.setPadding(48, 12, 48, 12);
-        new AlertDialog.Builder(this)
-                .setTitle("Where are we going?")
-                .setView(destination)
-                .setNegativeButton("Cancel", null)
-                .setPositiveButton("Choose navigation app", (dialog, which) -> {
-                    String query = destination.getText().toString().trim();
-                    if (!query.isEmpty()) chooseNavigationApp(query);
-                }).show();
+        new AddressAutocompleteDialog(this, lastGoodLocation, this::chooseNavigationApp).show();
     }
 
     private void chooseNavigationApp(String destination) {
