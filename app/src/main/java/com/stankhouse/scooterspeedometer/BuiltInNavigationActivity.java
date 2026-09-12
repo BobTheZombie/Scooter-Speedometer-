@@ -52,6 +52,8 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private boolean speechReady;
     private int stepIndex, lastSpokenStep = -1;
     private long lastRouteRequest;
+    private FlockCameraProvider flockCameras;
+    private long lastFlockRefresh;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -59,6 +61,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         destinationQuery = getIntent().getStringExtra("destination");
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        flockCameras = new FlockCameraProvider(this);
         speech = new TextToSpeech(this, this);
         FrameLayout root = new FrameLayout(this);
         map = new WebView(this);
@@ -107,6 +110,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         map.evaluateJavascript(String.format(Locale.US, "updateLocation(%.7f,%.7f,%.1f,%.1f)",
                 location.getLatitude(), location.getLongitude(), location.hasBearing() ? location.getBearing() : 0,
                 location.hasAccuracy() ? location.getAccuracy() : 20), null);
+        if(System.currentTimeMillis()-lastFlockRefresh>15L*60L*1000L){lastFlockRefresh=System.currentTimeMillis();flockCameras.nearby(location.getLatitude(),location.getLongitude(),(ok,body,message)->{if(!ok){lastFlockRefresh=0;return;}String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setFlockHopperCameras('"+safe+"')",null);});}
     }
     private void geocodeAndRoute() {
         String query = destinationQuery; destinationQuery = null;
@@ -173,7 +177,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private void showError(String message) { instruction.setText(message); new AlertDialog.Builder(this).setTitle("Navigation").setMessage(message).setPositiveButton("Close", (d,w) -> finish()).show(); }
     @Override public void onInit(int status) { speechReady = status == TextToSpeech.SUCCESS; if (speechReady) { speech.setLanguage(Locale.US); VoiceSettings.apply(this,speech); } }
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) Fullscreen.apply(this); }
-    @Override protected void onDestroy() { try { locationManager.removeUpdates(this); } catch (Exception ignored) {} network.shutdownNow(); speech.stop(); speech.shutdown(); map.destroy(); super.onDestroy(); }
+    @Override protected void onDestroy() { try { locationManager.removeUpdates(this); } catch (Exception ignored) {} network.shutdownNow();if(flockCameras!=null)flockCameras.shutdown(); speech.stop(); speech.shutdown(); map.destroy(); super.onDestroy(); }
     @Override public void onProviderEnabled(String provider) { }
     @Override public void onProviderDisabled(String provider) { }
     @Override public void onStatusChanged(String provider, int status, Bundle extras) { }
