@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dasher_capture_description">Captures order details only from the DoorDash Dasher offer screen while Dasher Mode and mileage shift are enabled.</string>
+</resources>
