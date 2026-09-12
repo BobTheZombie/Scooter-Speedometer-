@@ -21,6 +21,9 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.TimeZone;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -68,12 +71,13 @@ public class WeatherRepository {
         public final int precipitationMinutes;
         public final int precipitationChance;
         public final int precipitationCode;
+        public final long precipitationStartAt;
         public final double upcomingWindGust;
         public final long updatedAt;
 
         WeatherData(double temperature, double feelsLike, int rainChance, double windSpeed,
                     int windDirection, int weatherCode, long updatedAt, int precipitationMinutes,
-                    int precipitationChance, int precipitationCode, double upcomingWindGust) {
+                    int precipitationChance, int precipitationCode, long precipitationStartAt, double upcomingWindGust) {
             this.temperature = temperature;
             this.feelsLike = feelsLike;
             this.rainChance = rainChance;
@@ -84,6 +88,7 @@ public class WeatherRepository {
             this.precipitationMinutes = precipitationMinutes;
             this.precipitationChance = precipitationChance;
             this.precipitationCode = precipitationCode;
+            this.precipitationStartAt = precipitationStartAt;
             this.upcomingWindGust = upcomingWindGust;
         }
 
@@ -118,6 +123,7 @@ public class WeatherRepository {
             String[] points = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"};
             return points[((windDirection + 22) / 45) % 8];
         }
+        public String upcomingLabel(){if(precipitationMinutes<0||precipitationMinutes>60)return "";String kind=precipitationCode>=95?"STORM":((precipitationCode>=71&&precipitationCode<=77)||(precipitationCode>=85&&precipitationCode<=86))?"SNOW":"RAIN";return precipitationMinutes<=0?kind+" NOW":kind+" "+precipitationMinutes+"m";}
     }
 
     // Refresh frequently while riding, without hammering the providers on every GPS fix.
@@ -151,7 +157,7 @@ public class WeatherRepository {
                 cache.getInt("rain", 0), cache.getFloat("wind", 0), cache.getInt("direction", 0),
                 cache.getInt("code", 0), cache.getLong("updated", 0),
                 cache.getInt("precip_minutes", -1), cache.getInt("precip_chance", 0),
-                cache.getInt("precip_code", 0), cache.getFloat("upcoming_gust", 0));
+                cache.getInt("precip_code", 0), cache.getLong("precip_start_at",0), cache.getFloat("upcoming_gust", 0));
     }
 
     public AlertData cachedAlert() {
@@ -187,6 +193,7 @@ public class WeatherRepository {
                 cache.edit().putInt("precip_minutes", result.precipitationMinutes)
                         .putInt("precip_chance", result.precipitationChance)
                         .putInt("precip_code", result.precipitationCode)
+                        .putLong("precip_start_at",result.precipitationStartAt)
                         .putFloat("upcoming_gust", (float) result.upcomingWindGust).apply();
             } catch (Exception ignored) { }
             finally {
@@ -263,13 +270,13 @@ public class WeatherRepository {
 
     private WeatherData fetchOpenMeteo(double latitude,double longitude) throws Exception {
         String endpoint=String.format(Locale.US,"https://api.open-meteo.com/v1/forecast?latitude=%.5f&longitude=%.5f&current=temperature_2m,apparent_temperature,precipitation_probability,weather_code,wind_speed_10m,wind_direction_10m&minutely_15=precipitation,precipitation_probability,weather_code,wind_gusts_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto&forecast_days=1",latitude,longitude);
-        JSONObject root=getJson(endpoint),current=root.getJSONObject("current");int precipMinutes=-1,precipChance=0,precipCode=0;double maxGust=0;JSONObject q=root.optJSONObject("minutely_15");
-        if(q!=null){JSONArray amount=q.optJSONArray("precipitation"),chance=q.optJSONArray("precipitation_probability"),codes=q.optJSONArray("weather_code"),gusts=q.optJSONArray("wind_gusts_10m");int count=amount==null?0:Math.min(amount.length(),9);for(int i=1;i<count;i++){int probability=chance==null?0:chance.optInt(i,0);double quantity=amount.optDouble(i,0);if(gusts!=null)maxGust=Math.max(maxGust,gusts.optDouble(i,0));if(precipMinutes<0&&probability>=50&&quantity>.01){precipMinutes=i*15;precipChance=probability;precipCode=codes==null?61:codes.optInt(i,61);}}}
-        return new WeatherData(current.getDouble("temperature_2m"),current.getDouble("apparent_temperature"),current.optInt("precipitation_probability",0),current.getDouble("wind_speed_10m"),current.optInt("wind_direction_10m",0),current.getInt("weather_code"),System.currentTimeMillis(),precipMinutes,precipChance,precipCode,maxGust);
+        JSONObject root=getJson(endpoint),current=root.getJSONObject("current");int precipMinutes=-1,precipChance=0,precipCode=0;long precipStart=0;double maxGust=0;JSONObject q=root.optJSONObject("minutely_15");
+        if(q!=null){JSONArray times=q.optJSONArray("time"),amount=q.optJSONArray("precipitation"),chance=q.optJSONArray("precipitation_probability"),codes=q.optJSONArray("weather_code"),gusts=q.optJSONArray("wind_gusts_10m");int count=amount==null?0:Math.min(amount.length(),9);for(int i=0;i<count;i++){int probability=chance==null?0:chance.optInt(i,0);double quantity=amount.optDouble(i,0);if(gusts!=null)maxGust=Math.max(maxGust,gusts.optDouble(i,0));long at=times==null?System.currentTimeMillis()+i*15L*60000L:parseLocalForecastTime(times.optString(i),root.optInt("utc_offset_seconds",0));int minutes=(int)Math.max(0,Math.round((at-System.currentTimeMillis())/60000d));if(precipMinutes<0&&minutes<=120&&probability>=45&&quantity>.01){precipMinutes=minutes;precipChance=probability;precipCode=codes==null?61:codes.optInt(i,61);precipStart=at;}}}
+        return new WeatherData(current.getDouble("temperature_2m"),current.getDouble("apparent_temperature"),current.optInt("precipitation_probability",0),current.getDouble("wind_speed_10m"),current.optInt("wind_direction_10m",0),current.getInt("weather_code"),System.currentTimeMillis(),precipMinutes,precipChance,precipCode,precipStart,maxGust);
     }
 
     private WeatherData fetchMetNorway(double latitude,double longitude) throws Exception {
-        String endpoint=String.format(Locale.US,"https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%.5f&lon=%.5f",latitude,longitude);JSONArray series=getJson(endpoint).getJSONObject("properties").getJSONArray("timeseries");JSONObject first=series.getJSONObject(0).getJSONObject("data"),details=first.getJSONObject("instant").getJSONObject("details");JSONObject next=first.optJSONObject("next_1_hours");String symbol=next==null?"cloudy":next.getJSONObject("summary").optString("symbol_code","cloudy");double precip=next==null?0:next.getJSONObject("details").optDouble("precipitation_amount",0);int code=metCode(symbol);double c=details.getDouble("air_temperature");double windMps=details.optDouble("wind_speed",0);double gustMps=details.optDouble("wind_speed_of_gust",windMps);return new WeatherData(c*9/5+32,c*9/5+32,precip>0?80:0,windMps*2.2369363,details.optInt("wind_from_direction",0),code,System.currentTimeMillis(),precip>0?0:-1,precip>0?80:0,code,gustMps*2.2369363);
+        String endpoint=String.format(Locale.US,"https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%.5f&lon=%.5f",latitude,longitude);JSONArray series=getJson(endpoint).getJSONObject("properties").getJSONArray("timeseries");JSONObject first=series.getJSONObject(0).getJSONObject("data"),details=first.getJSONObject("instant").getJSONObject("details");JSONObject next=first.optJSONObject("next_1_hours");String symbol=next==null?"cloudy":next.getJSONObject("summary").optString("symbol_code","cloudy");double precip=next==null?0:next.getJSONObject("details").optDouble("precipitation_amount",0);int code=metCode(symbol),minutes=precip>0?0:-1,chance=precip>0?80:0,pcode=code;long start=precip>0?System.currentTimeMillis():0;for(int i=1;i<Math.min(4,series.length())&&minutes<0;i++){JSONObject row=series.getJSONObject(i),hour=row.getJSONObject("data").optJSONObject("next_1_hours");if(hour==null)continue;String s=hour.getJSONObject("summary").optString("symbol_code","");double a=hour.getJSONObject("details").optDouble("precipitation_amount",0);if(a>.01){start=parseUtcTime(row.optString("time"));minutes=(int)Math.max(0,Math.round((start-System.currentTimeMillis())/60000d));chance=80;pcode=metCode(s);}}double c=details.getDouble("air_temperature");double windMps=details.optDouble("wind_speed",0);double gustMps=details.optDouble("wind_speed_of_gust",windMps);return new WeatherData(c*9/5+32,c*9/5+32,precip>0?80:0,windMps*2.2369363,details.optInt("wind_from_direction",0),code,System.currentTimeMillis(),minutes,chance,pcode,start,gustMps*2.2369363);
     }
 
     private int metCode(String s){s=s.toLowerCase(Locale.US);if(s.contains("thunder"))return 95;if(s.contains("snow")||s.contains("sleet"))return 73;if(s.contains("rain")||s.contains("shower"))return 61;if(s.contains("fog"))return 45;if(s.contains("partlycloudy"))return 2;if(s.contains("cloudy"))return 3;return 0;}
@@ -278,8 +285,11 @@ public class WeatherRepository {
         String key=settings.getString("accuweather_api_key","").trim();if(key.isEmpty())throw new Exception("AccuWeather API key required");
         String locationKey=cache.getString("accu_location_key","");float oldLat=cache.getFloat("accu_lat",999),oldLon=cache.getFloat("accu_lon",999);
         if(locationKey.isEmpty()||Math.abs(oldLat-latitude)>.02||Math.abs(oldLon-longitude)>.02){String endpoint=String.format(Locale.US,"https://dataservice.accuweather.com/locations/v1/cities/geoposition/search?q=%.5f,%.5f",latitude,longitude);JSONObject place=new JSONObject(getText(endpoint,key));locationKey=place.getString("Key");cache.edit().putString("accu_location_key",locationKey).putFloat("accu_lat",(float)latitude).putFloat("accu_lon",(float)longitude).apply();}
-        String currentEndpoint="https://dataservice.accuweather.com/currentconditions/v1/"+URLEncoder.encode(locationKey,"UTF-8")+"?details=true";JSONArray rows=new JSONArray(getText(currentEndpoint,key));JSONObject current=rows.getJSONObject(0);double temp=current.getJSONObject("Temperature").getJSONObject("Imperial").getDouble("Value");JSONObject real=current.optJSONObject("RealFeelTemperature");double feels=real==null?temp:real.getJSONObject("Imperial").optDouble("Value",temp);int code=accuCode(current.optInt("WeatherIcon",7),current.optString("PrecipitationType",""));JSONObject wind=current.optJSONObject("Wind"),gust=current.optJSONObject("WindGust");double windSpeed=wind==null?0:wind.getJSONObject("Speed").getJSONObject("Imperial").optDouble("Value",0);int direction=wind==null?0:wind.getJSONObject("Direction").optInt("Degrees",0);double gustSpeed=gust==null?windSpeed:gust.getJSONObject("Speed").getJSONObject("Imperial").optDouble("Value",windSpeed);boolean wet=current.optBoolean("HasPrecipitation",false);return new WeatherData(temp,feels,wet?100:0,windSpeed,direction,code,System.currentTimeMillis(),wet?0:-1,wet?100:0,code,gustSpeed);
+        String currentEndpoint="https://dataservice.accuweather.com/currentconditions/v1/"+URLEncoder.encode(locationKey,"UTF-8")+"?details=true";JSONArray rows=new JSONArray(getText(currentEndpoint,key));JSONObject current=rows.getJSONObject(0);double temp=current.getJSONObject("Temperature").getJSONObject("Imperial").getDouble("Value");JSONObject real=current.optJSONObject("RealFeelTemperature");double feels=real==null?temp:real.getJSONObject("Imperial").optDouble("Value",temp);int code=accuCode(current.optInt("WeatherIcon",7),current.optString("PrecipitationType",""));JSONObject wind=current.optJSONObject("Wind"),gust=current.optJSONObject("WindGust");double windSpeed=wind==null?0:wind.getJSONObject("Speed").getJSONObject("Imperial").optDouble("Value",0);int direction=wind==null?0:wind.getJSONObject("Direction").optInt("Degrees",0);double gustSpeed=gust==null?windSpeed:gust.getJSONObject("Speed").getJSONObject("Imperial").optDouble("Value",windSpeed);boolean wet=current.optBoolean("HasPrecipitation",false);return new WeatherData(temp,feels,wet?100:0,windSpeed,direction,code,System.currentTimeMillis(),wet?0:-1,wet?100:0,code,wet?System.currentTimeMillis():0,gustSpeed);
     }
+
+    private long parseLocalForecastTime(String value,int utcOffsetSeconds){try{SimpleDateFormat f=new SimpleDateFormat("yyyy-MM-dd'T'HH:mm",Locale.US);f.setTimeZone(TimeZone.getTimeZone("GMT"));Date d=f.parse(value);return d==null?0:d.getTime()-utcOffsetSeconds*1000L;}catch(Exception e){return 0;}}
+    private long parseUtcTime(String value){try{SimpleDateFormat f=new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'",Locale.US);f.setTimeZone(TimeZone.getTimeZone("UTC"));Date d=f.parse(value);return d==null?0:d.getTime();}catch(Exception e){return 0;}}
 
     private int accuCode(int icon,String type){if("Snow".equalsIgnoreCase(type)||"Ice".equalsIgnoreCase(type)||"Mixed".equalsIgnoreCase(type))return 73;if("Rain".equalsIgnoreCase(type))return 61;if(icon>=15&&icon<=17)return 95;if(icon==11)return 45;if(icon>=12&&icon<=18)return 61;if(icon>=19&&icon<=29)return 73;if(icon==1||icon==2||icon==30||icon==33||icon==34)return 0;if(icon<=6||icon==35||icon==36)return 2;return 3;}
 
