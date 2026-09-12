@@ -198,7 +198,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
             } catch (Exception ignored) { }
         });
         client.nearbyCommunityHazards(fix.getLatitude(),fix.getLongitude(),(ok,message,body)->{if(!ok)return;String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");map.evaluateJavascript("setCommunityHazards('"+safe+"')",null);});
-        if(System.currentTimeMillis()-lastFlockRefresh>15L*60L*1000L){lastFlockRefresh=System.currentTimeMillis();flockCameras.nearby(fix.getLatitude(),fix.getLongitude(),(ok,body,message)->{if(!ok){lastFlockRefresh=0;return;}String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setFlockHopperCameras('"+safe+"')",null);});}
+        if(System.currentTimeMillis()-lastFlockRefresh>15L*60L*1000L){lastFlockRefresh=System.currentTimeMillis();flockCameras.nearby(fix.getLatitude(),fix.getLongitude(),(ok,body,message)->{if(!ok){lastFlockRefresh=0;status.setText("ALPR feed unavailable • tap REFRESH to retry");if(mapReady)map.evaluateJavascript("document.getElementById('flockToggle').textContent='ALPR RETRY'",null);return;}String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setFlockHopperCameras('"+safe+"')",null);});}
     }
 
     private void beginSosCountdown() {
