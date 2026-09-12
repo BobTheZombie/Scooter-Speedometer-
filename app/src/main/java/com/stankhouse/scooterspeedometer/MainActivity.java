@@ -314,6 +314,16 @@ public class MainActivity extends Activity implements LocationListener {
         return max <= 0 ? 0 : Math.round(100f * audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / max);
     }
 
+    private void showMediaVolumeSlider() {
+        int maximum=audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(30,18,30,12);
+        TextView value=new TextView(this);value.setTextColor(Color.WHITE);value.setTextSize(22);value.setGravity(android.view.Gravity.CENTER);panel.addView(value);
+        SeekBar slider=new SeekBar(this);slider.setMax(Math.max(1,maximum));slider.setProgress(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC));slider.setPadding(4,18,4,16);panel.addView(slider);
+        value.setText("MEDIA VOLUME  •  "+musicVolumePercent()+"%");
+        slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar b,int progress,boolean user){if(user)audioManager.setStreamVolume(AudioManager.STREAM_MUSIC,progress,0);value.setText("MEDIA VOLUME  •  "+musicVolumePercent()+"%");if(speedView!=null)speedView.invalidate();}public void onStartTrackingTouch(SeekBar b){}public void onStopTrackingTouch(SeekBar b){}});
+        new AlertDialog.Builder(this).setTitle("VOLUME").setView(panel).setPositiveButton("DONE",null).show();
+    }
+
     private void showEqualizer() {
         ScrollView scroll = new ScrollView(this);
         LinearLayout panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(28, 12, 28, 12);
@@ -332,8 +342,9 @@ public class MainActivity extends Activity implements LocationListener {
         }
         TextView note = new TextView(this); note.setText("Changes apply live to the phone's media output. Available range: −12 to +12 dB."); note.setTextColor(Color.rgb(175,195,205)); note.setPadding(6,14,6,8); panel.addView(note);
         scroll.addView(panel);
-        new AlertDialog.Builder(this).setTitle("7-BAND PARAMETRIC EQ").setMessage(audioRack.eqAvailable()?"Shape the output curve":"This phone currently blocks the system EQ effect")
-                .setView(scroll).setNeutralButton("FLAT",(d,w)->{audioRack.flat();showEqualizer();}).setPositiveButton("DONE",null).show();
+        new AlertDialog.Builder(this).setTitle("7-BAND PARAMETRIC EQ").setMessage((audioRack.eqAvailable()?"Shape the output curve":"This phone currently blocks the system EQ effect")+"\n"+audioRack.oemName())
+                .setView(scroll).setNeutralButton("FLAT",(d,w)->{audioRack.flat();showEqualizer();})
+                .setNegativeButton("OEM AUDIO",(d,w)->openOemAudio()).setPositiveButton("DONE",null).show();
     }
 
     private String signedDb(int db) { return (db > 0 ? "+" : "") + db + " dB"; }
@@ -346,9 +357,11 @@ public class MainActivity extends Activity implements LocationListener {
         TextView warning = new TextView(this); warning.setText("Use only enough gain to overcome quiet recordings. Heavy boost can cause clipping, distortion, or speaker damage."); warning.setTextColor(Color.rgb(255,185,110)); warning.setPadding(8,18,8,8); panel.addView(warning);
         enabled.setOnCheckedChangeListener((button,on)->{audioRack.setAmpEnabled(on);if(speedView!=null)speedView.invalidate();});
         slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar b,int p,boolean user){audioRack.setAmplifierGain(p*100);value.setText("Gain  +"+p+".0 dB");}public void onStartTrackingTouch(SeekBar b){}public void onStopTrackingTouch(SeekBar b){}});
-        new AlertDialog.Builder(this).setTitle("MEDIA AMPLIFIER").setMessage(audioRack.ampAvailable()?"Digital gain stage":"This phone currently blocks the amplifier effect")
-                .setView(panel).setPositiveButton("DONE",null).show();
+        new AlertDialog.Builder(this).setTitle("MEDIA AMPLIFIER").setMessage((audioRack.ampAvailable()?"Digital gain stage":"This phone currently blocks the amplifier effect")+"\n"+audioRack.oemName())
+                .setView(panel).setNegativeButton("OEM AUDIO",(d,w)->openOemAudio()).setPositiveButton("DONE",null).show();
     }
+
+    private void openOemAudio(){if(!audioRack.openOemPanel(this))android.widget.Toast.makeText(this,"No separate "+audioRack.oemName()+" control panel is installed. The built-in audio rack remains available.",android.widget.Toast.LENGTH_LONG).show();}
 
     private void openBackupCamera() {
         if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
@@ -985,10 +998,10 @@ public class MainActivity extends Activity implements LocationListener {
             text(c, isPlaying() ? "Ⅱ" : "▶", w * .64f, buttonY, 29f * scale,
                     accentColor(), Paint.Align.CENTER, true);
             text(c, "▶|", w * .75f, buttonY, 23f * scale, Color.WHITE, Paint.Align.CENTER, true);
-            text(c, "−", w * .86f, buttonY, 28f * scale, Color.WHITE, Paint.Align.CENTER, true);
-            text(c, "+", w * .95f, buttonY, 27f * scale, Color.WHITE, Paint.Align.CENTER, true);
-            text(c, "VOL " + musicVolumePercent() + "%", w * .905f, top + 67f * scale,
-                    10f * scale, Color.rgb(130, 220, 235), Paint.Align.CENTER, true);
+            paint.setColor(Color.argb(95,0,229,255));
+            c.drawRoundRect(new RectF(w*.815f,buttonY-24f*scale,w*.965f,buttonY+12f*scale),18f*scale,18f*scale,paint);
+            text(c, "▰  " + musicVolumePercent() + "%", w * .89f, buttonY-1f*scale,
+                    12f * scale, Color.WHITE, Paint.Align.CENTER, true);
         }
 
         private void drawWeatherPanel(Canvas c, float w, float h, float scale) {
@@ -1524,8 +1537,7 @@ public class MainActivity extends Activity implements LocationListener {
                         else if (sourceX < w * .585f) mediaPrevious();
                         else if (sourceX < w * .695f) mediaPlayPause();
                         else if (sourceX < w * .805f) mediaNext();
-                        else if (sourceX < w * .91f) adjustMusicVolume(AudioManager.ADJUST_LOWER);
-                        else adjustMusicVolume(AudioManager.ADJUST_RAISE);
+                        else showMediaVolumeSlider();
                     }
                 } else if (navigationSlot.contains(e.getX(), e.getY())) {
                     beginNavigation();
