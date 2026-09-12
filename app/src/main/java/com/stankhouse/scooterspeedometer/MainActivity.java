@@ -44,6 +44,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -60,6 +61,7 @@ public class MainActivity extends Activity implements LocationListener {
     private LocationManager locationManager;
     private MediaSessionManager mediaSessionManager;
     private AudioManager audioManager;
+    private AudioRack audioRack;
     private SpeedView speedView;
     private SharedPreferences prefs;
     private Location lastGoodLocation;
@@ -110,6 +112,7 @@ public class MainActivity extends Activity implements LocationListener {
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         mediaSessionManager = (MediaSessionManager) getSystemService(MEDIA_SESSION_SERVICE);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        audioRack = new AudioRack(this);
         weatherRepository = new WeatherRepository(this);
         weatherVoice = new WeatherVoiceManager(this);
         nightMode = new AutoNightController(this, () -> { if (speedView != null) speedView.invalidate(); });
@@ -165,6 +168,7 @@ public class MainActivity extends Activity implements LocationListener {
         nightMode.start();
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) startGps();
         refreshMedia();
+        if (audioRack != null) audioRack.refresh();
         if(!notificationConsentPrompted&&!prefs.contains("notification_monitoring")){notificationConsentPrompted=true;speedView.post(this::showNotificationConsent);}
         if (!weatherConsentPrompted && !prefs.contains("weather_provider_consent")) {
             weatherConsentPrompted = true;
@@ -308,6 +312,42 @@ public class MainActivity extends Activity implements LocationListener {
     private int musicVolumePercent() {
         int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
         return max <= 0 ? 0 : Math.round(100f * audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) / max);
+    }
+
+    private void showEqualizer() {
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(28, 12, 28, 12);
+        Switch enabled = settingsSwitch("7-band EQ", audioRack.eqEnabled()); panel.addView(enabled);
+        enabled.setOnCheckedChangeListener((button, value) -> { audioRack.setEqEnabled(value); if (speedView != null) speedView.invalidate(); });
+        for (int i = 0; i < AudioRack.FREQUENCIES.length; i++) {
+            final int band = i;
+            TextView label = new TextView(this); label.setTextColor(Color.WHITE); label.setTextSize(14); label.setPadding(6, 9, 6, 0);
+            int hz = AudioRack.FREQUENCIES[i]; label.setText((hz >= 1000 ? (hz / 1000f) + " kHz" : hz + " Hz") + "   " + signedDb(audioRack.gain(i)));
+            SeekBar slider = new SeekBar(this); slider.setMax(24); slider.setProgress(audioRack.gain(i) + 12);
+            slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) { int db=progress-12; label.setText((AudioRack.FREQUENCIES[band]>=1000?(AudioRack.FREQUENCIES[band]/1000f)+" kHz":AudioRack.FREQUENCIES[band]+" Hz")+"   "+signedDb(db)); audioRack.setGain(band,db); }
+                public void onStartTrackingTouch(SeekBar bar) { } public void onStopTrackingTouch(SeekBar bar) { }
+            });
+            panel.addView(label); panel.addView(slider);
+        }
+        TextView note = new TextView(this); note.setText("Changes apply live to the phone's media output. Available range: −12 to +12 dB."); note.setTextColor(Color.rgb(175,195,205)); note.setPadding(6,14,6,8); panel.addView(note);
+        scroll.addView(panel);
+        new AlertDialog.Builder(this).setTitle("7-BAND PARAMETRIC EQ").setMessage(audioRack.eqAvailable()?"Shape the output curve":"This phone currently blocks the system EQ effect")
+                .setView(scroll).setNeutralButton("FLAT",(d,w)->{audioRack.flat();showEqualizer();}).setPositiveButton("DONE",null).show();
+    }
+
+    private String signedDb(int db) { return (db > 0 ? "+" : "") + db + " dB"; }
+
+    private void showAmplifier() {
+        LinearLayout panel = new LinearLayout(this); panel.setOrientation(LinearLayout.VERTICAL); panel.setPadding(28,12,28,12);
+        Switch enabled = settingsSwitch("Amplifier", audioRack.ampEnabled()); panel.addView(enabled);
+        TextView value = new TextView(this); value.setTextColor(Color.WHITE); value.setTextSize(18); value.setPadding(8,18,8,4); value.setText("Gain  +"+(audioRack.amplifierGain()/100f)+" dB"); panel.addView(value);
+        SeekBar slider = new SeekBar(this); slider.setMax(12); slider.setProgress(audioRack.amplifierGain()/100); panel.addView(slider);
+        TextView warning = new TextView(this); warning.setText("Use only enough gain to overcome quiet recordings. Heavy boost can cause clipping, distortion, or speaker damage."); warning.setTextColor(Color.rgb(255,185,110)); warning.setPadding(8,18,8,8); panel.addView(warning);
+        enabled.setOnCheckedChangeListener((button,on)->{audioRack.setAmpEnabled(on);if(speedView!=null)speedView.invalidate();});
+        slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar b,int p,boolean user){audioRack.setAmplifierGain(p*100);value.setText("Gain  +"+p+".0 dB");}public void onStartTrackingTouch(SeekBar b){}public void onStopTrackingTouch(SeekBar b){}});
+        new AlertDialog.Builder(this).setTitle("MEDIA AMPLIFIER").setMessage(audioRack.ampAvailable()?"Digital gain stage":"This phone currently blocks the amplifier effect")
+                .setView(panel).setPositiveButton("DONE",null).show();
     }
 
     private void openBackupCamera() {
@@ -507,6 +547,7 @@ public class MainActivity extends Activity implements LocationListener {
         if (weatherVoice != null) weatherVoice.shutdown();
         if (roadAwareness != null) roadAwareness.shutdown();
         if(crashDetector!=null)crashDetector.stop();
+        if(audioRack!=null)audioRack.release();
         super.onDestroy();
     }
 
@@ -936,6 +977,10 @@ public class MainActivity extends Activity implements LocationListener {
             text(c, ellipsize(artist, 28), infoX, top + 65f * scale, 14f * scale,
                     Color.rgb(186, 204, 213), Paint.Align.LEFT, false);
             float buttonY = bottom - 34f * scale;
+            text(c, audioRack.eqEnabled() ? "EQ•" : "EQ", w * .34f, buttonY, 13f * scale,
+                    audioRack.eqEnabled() ? accentColor() : Color.rgb(175,195,204), Paint.Align.CENTER, true);
+            text(c, audioRack.ampEnabled() ? "AMP•" : "AMP", w * .43f, buttonY, 12f * scale,
+                    audioRack.ampEnabled() ? accentColor() : Color.rgb(175,195,204), Paint.Align.CENTER, true);
             text(c, "|◀", w * .53f, buttonY, 23f * scale, Color.WHITE, Paint.Align.CENTER, true);
             text(c, isPlaying() ? "Ⅱ" : "▶", w * .64f, buttonY, 29f * scale,
                     accentColor(), Paint.Align.CENTER, true);
@@ -1473,8 +1518,10 @@ public class MainActivity extends Activity implements LocationListener {
                     float sourceX = w * (.035f + (e.getX() - mediaSlot.left) / mediaSlot.width() * .93f);
                     float sourceY = h * (.025f + (e.getY() - mediaSlot.top) / mediaSlot.height() * .22f);
                     if (!hasMediaAccess()) openMediaAccessSettings();
-                    else if (sourceX >= w * .46f && sourceY >= h * .12f) {
-                        if (sourceX < w * .585f) mediaPrevious();
+                    else if (sourceY >= h * .12f) {
+                        if (sourceX >= w * .29f && sourceX < w * .385f) showEqualizer();
+                        else if (sourceX >= w * .385f && sourceX < w * .485f) showAmplifier();
+                        else if (sourceX < w * .585f) mediaPrevious();
                         else if (sourceX < w * .695f) mediaPlayPause();
                         else if (sourceX < w * .805f) mediaNext();
                         else if (sourceX < w * .91f) adjustMusicVolume(AudioManager.ADJUST_LOWER);
