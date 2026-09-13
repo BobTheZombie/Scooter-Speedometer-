@@ -50,6 +50,11 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private boolean hasDestination;
     private String destinationQuery;
     private TextView instruction, tripInfo;
+    private Button goButton;
+    private boolean guidanceActive;
+    private Location filteredLocation;
+    private long lastMapUpdate;
+    private String routeSummary="";
     private TextToSpeech speech;
     private boolean speechReady;
     private int stepIndex, lastSpokenStep = -1;
@@ -95,6 +100,8 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         tripInfo = label(15, Color.WHITE, 0xE5101820, Gravity.CENTER, 12);
         FrameLayout.LayoutParams bottom = new FrameLayout.LayoutParams(-1, dp(50));
         bottom.gravity = Gravity.BOTTOM; bottom.setMargins(dp(45), 0, dp(45), dp(15)); root.addView(tripInfo, bottom);
+        goButton = new Button(this);goButton.setText("GO");goButton.setTextSize(20);UiKit.button(goButton,Color.rgb(0,126,148));goButton.setVisibility(View.GONE);
+        goButton.setOnClickListener(v->startGuidance());FrameLayout.LayoutParams goParams=new FrameLayout.LayoutParams(dp(112),dp(58));goParams.gravity=Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL;goParams.setMargins(0,0,0,dp(70));root.addView(goButton,goParams);
         Button close = new Button(this); close.setText("×"); close.setTextSize(22);UiKit.button(close,Color.rgb(40,55,62)); close.setOnClickListener(v -> finish());
         FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(dp(44), dp(44));
         closeParams.gravity = Gravity.BOTTOM | Gravity.RIGHT; closeParams.setMargins(0,0,dp(4),dp(18)); root.addView(close, closeParams);
@@ -110,21 +117,22 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private void requestLocation() {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) { finish(); return; }
-        try { locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 500L, 0f, this); }
+        try { locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 250L, 0f, this);if(locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER))locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,1000L,0f,this); }
         catch (SecurityException ignored) { }
     }
     @Override public void onLocationChanged(Location location) {
-        currentLocation = location; updateMapLocation(location);
-        checkCameraWarnings(location);
-        checkPoliceWarnings(location);
+        Location smooth=filterLocation(location);if(smooth==null)return;currentLocation = smooth; updateMapLocation(smooth);
+        if(guidanceActive){checkCameraWarnings(smooth);checkPoliceWarnings(smooth);}
         if (!hasDestination && destinationQuery != null) geocodeAndRoute();
-        else if (hasDestination) updateGuidance(location);
+        else if (hasDestination&&guidanceActive) updateGuidance(smooth);
     }
+    private Location filterLocation(Location next){if(next==null||!next.hasAccuracy()||next.getAccuracy()>85f)return null;if(filteredLocation==null){filteredLocation=new Location(next);return new Location(filteredLocation);}long dt=Math.max(1,next.getTime()-filteredLocation.getTime());float jump=filteredLocation.distanceTo(next);float allowed=Math.max(45f,(filteredLocation.getSpeed()+18f)*dt/1000f+next.getAccuracy()*1.5f);if(dt<5000&&jump>allowed)return null;float alpha=Math.max(.22f,Math.min(.82f,(next.getSpeed()/12f)+(.55f-next.getAccuracy()/150f)));Location out=new Location(next);out.setLatitude(filteredLocation.getLatitude()+(next.getLatitude()-filteredLocation.getLatitude())*alpha);out.setLongitude(filteredLocation.getLongitude()+(next.getLongitude()-filteredLocation.getLongitude())*alpha);if(next.hasBearing()&&filteredLocation.hasBearing()){float delta=((next.getBearing()-filteredLocation.getBearing()+540f)%360f)-180f;out.setBearing((filteredLocation.getBearing()+delta*Math.max(.25f,alpha)+360f)%360f);}filteredLocation=out;return new Location(out);}
     private void updateMapLocation(Location location) {
         if (!mapReady) return;
-        map.evaluateJavascript(String.format(Locale.US, "updateLocation(%.7f,%.7f,%.1f,%.1f)",
-                location.getLatitude(), location.getLongitude(), location.hasBearing() ? location.getBearing() : 0,
-                location.hasAccuracy() ? location.getAccuracy() : 20), null);
+        SnappedPoint snap=guidanceActive?snapToRoute(location):null;double mapLat=snap==null?location.getLatitude():snap.lat,mapLon=snap==null?location.getLongitude():snap.lon;float bearing=snap==null?(location.hasBearing()?location.getBearing():0):snap.bearing;
+        map.evaluateJavascript(String.format(Locale.US, "updateLocation(%.7f,%.7f,%.1f,%.1f,%s)",
+                mapLat,mapLon,bearing,
+                location.hasAccuracy() ? location.getAccuracy() : 20,guidanceActive?"true":"false"), null);
         if(System.currentTimeMillis()-lastFlockRefresh>15L*60L*1000L){lastFlockRefresh=System.currentTimeMillis();flockCameras.nearby(location.getLatitude(),location.getLongitude(),(ok,body,message)->{if(!ok){lastFlockRefresh=0;return;}applyCameraData(body);String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setFlockHopperCameras('"+safe+"')",null);});}
         if(System.currentTimeMillis()-lastPoliceRefresh>30L*1000L){lastPoliceRefresh=System.currentTimeMillis();policeProvider.nearby(location.getLatitude(),location.getLongitude(),(ok,body,message)->{if(!ok){lastPoliceRefresh=0;return;}applyPoliceData(body);String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setPoliceSightings('"+safe+"')",null);});}
     }
@@ -150,8 +158,8 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         network.execute(() -> {
             HttpURLConnection connection = null;
             try {
-                String endpoint = String.format(Locale.US, "https://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true", lon, lat, destinationLongitude, destinationLatitude);
-                connection = open(new URL(endpoint)); JSONObject route = new JSONObject(read(connection)).getJSONArray("routes").getJSONObject(0);
+                String endpoint = String.format(Locale.US, "https://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true&alternatives=true", lon, lat, destinationLongitude, destinationLatitude);
+                connection = open(new URL(endpoint)); JSONArray candidates=new JSONObject(read(connection)).getJSONArray("routes");JSONObject route = candidates.getJSONObject(0);
                 String geometry = route.getJSONObject("geometry").toString(); double distance = route.getDouble("distance"), duration = route.getDouble("duration");
                 List<RouteStep> parsed = parseSteps(route.getJSONArray("legs").getJSONObject(0).getJSONArray("steps"));
                 List<RoutePoint> routeShape=parseRouteShape(route.getJSONObject("geometry"));
@@ -195,9 +203,11 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         steps.clear(); steps.addAll(parsed); stepIndex = Math.min(1, Math.max(0, steps.size() - 1)); lastSpokenStep = -1;spokenStage=0;offRouteSince=0;
         routePoints.clear();routePoints.addAll(shape);
         if (mapReady) map.evaluateJavascript("setRoute(" + geometry + ")", null);
-        tripInfo.setText(String.format(Locale.US, "%.1f mi  •  %d min  •  OPENSTREETMAP", distance / 1609.344, Math.round(duration / 60)));
-        if (!steps.isEmpty()) instruction.setText(steps.get(stepIndex).instruction);
+        routeSummary=String.format(Locale.US, "%.1f mi  •  %d min  •  ETA %s", distance / 1609.344, Math.round(duration / 60),new java.text.SimpleDateFormat("h:mm a",Locale.US).format(new java.util.Date(System.currentTimeMillis()+(long)(duration*1000))));tripInfo.setText(routeSummary);
+        if(guidanceActive){goButton.setVisibility(View.GONE);if(!steps.isEmpty())instruction.setText(steps.get(stepIndex).instruction);if(mapReady)map.evaluateJavascript("startGuidance()",null);}else{goButton.setVisibility(View.VISIBLE);instruction.setText("Route ready • Review the route, then tap GO");}
     }
+    private void startGuidance(){if(steps.isEmpty())return;guidanceActive=true;goButton.setVisibility(View.GONE);stepIndex=Math.min(1,Math.max(0,steps.size()-1));lastSpokenStep=-1;spokenStage=0;instruction.setText(steps.get(stepIndex).instruction);if(mapReady)map.evaluateJavascript("startGuidance()",null);if(speechReady)speech.speak("Navigation started",TextToSpeech.QUEUE_ADD,null,"navigation_started");if(currentLocation!=null)updateGuidance(currentLocation);}
+    private SnappedPoint snapToRoute(Location location){if(routePoints.size()<2)return null;double best=Double.MAX_VALUE,bestLat=location.getLatitude(),bestLon=location.getLongitude();float bestBearing=location.hasBearing()?location.getBearing():0;for(int i=1;i<routePoints.size();i++){RoutePoint a=routePoints.get(i-1),b=routePoints.get(i);double scale=Math.cos(Math.toRadians(location.getLatitude()));double ax=(a.lon-location.getLongitude())*111320d*scale,ay=(a.lat-location.getLatitude())*111320d,bx=(b.lon-location.getLongitude())*111320d*scale,by=(b.lat-location.getLatitude())*111320d;double vx=bx-ax,vy=by-ay,den=vx*vx+vy*vy,t=den==0?0:Math.max(0,Math.min(1,-(ax*vx+ay*vy)/den));double x=ax+t*vx,y=ay+t*vy,d=Math.hypot(x,y);if(d<best){best=d;bestLat=location.getLatitude()+y/111320d;bestLon=location.getLongitude()+x/(111320d*scale);float[] br=new float[2];Location.distanceBetween(a.lat,a.lon,b.lat,b.lon,br);bestBearing=br[1];}}return best<=Math.max(30d,location.getAccuracy()*1.25d)?new SnappedPoint(bestLat,bestLon,bestBearing):null;}
     private void applyCameraData(String body){cameraPoints.clear();try{JSONArray list=new JSONArray(body);for(int i=0;i<list.length();i++){JSONObject p=list.getJSONObject(i);cameraPoints.add(new CameraPoint(p.getDouble("latitude"),p.getDouble("longitude")));}if(currentLocation!=null)checkCameraWarnings(currentLocation);}catch(Exception ignored){}}
     private void checkCameraWarnings(Location location){
         if(!speechReady||cameraPoints.isEmpty()||location.getSpeed()<1.5f)return;long now=System.currentTimeMillis();if(now-lastCameraWarning<12000L)return;
@@ -239,4 +249,5 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private static class RoutePoint{final double lat,lon;RoutePoint(double a,double o){lat=a;lon=o;}}
     private static class CameraPoint{final double lat,lon;CameraPoint(double a,double o){lat=a;lon=o;}String key(){return String.format(Locale.US,"%.5f,%.5f",lat,lon);}}
     private static class PolicePoint{final long id;final double lat,lon;PolicePoint(long i,double a,double o){id=i;lat=a;lon=o;}}
+    private static class SnappedPoint{final double lat,lon;final float bearing;SnappedPoint(double a,double o,float b){lat=a;lon=o;bearing=b;}}
 }
