@@ -62,6 +62,10 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private final List<RoutePoint> routePoints = new ArrayList<>();
     private final Map<String,Long> cameraWarningTimes = new HashMap<>();
     private long lastCameraWarning;
+    private PoliceSightingProvider policeProvider;
+    private long lastPoliceRefresh,lastPoliceWarning;
+    private final List<PolicePoint> policePoints=new ArrayList<>();
+    private final Map<Long,Long> policeWarningTimes=new HashMap<>();
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -70,6 +74,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         destinationQuery = getIntent().getStringExtra("destination");
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         flockCameras = new FlockCameraProvider(this);
+        policeProvider = new PoliceSightingProvider();
         speech = new TextToSpeech(this, this);
         FrameLayout root = new FrameLayout(this);
         map = new WebView(this);
@@ -111,6 +116,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     @Override public void onLocationChanged(Location location) {
         currentLocation = location; updateMapLocation(location);
         checkCameraWarnings(location);
+        checkPoliceWarnings(location);
         if (!hasDestination && destinationQuery != null) geocodeAndRoute();
         else if (hasDestination) updateGuidance(location);
     }
@@ -120,6 +126,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
                 location.getLatitude(), location.getLongitude(), location.hasBearing() ? location.getBearing() : 0,
                 location.hasAccuracy() ? location.getAccuracy() : 20), null);
         if(System.currentTimeMillis()-lastFlockRefresh>15L*60L*1000L){lastFlockRefresh=System.currentTimeMillis();flockCameras.nearby(location.getLatitude(),location.getLongitude(),(ok,body,message)->{if(!ok){lastFlockRefresh=0;return;}applyCameraData(body);String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setFlockHopperCameras('"+safe+"')",null);});}
+        if(System.currentTimeMillis()-lastPoliceRefresh>30L*1000L){lastPoliceRefresh=System.currentTimeMillis();policeProvider.nearby(location.getLatitude(),location.getLongitude(),(ok,body,message)->{if(!ok){lastPoliceRefresh=0;return;}applyPoliceData(body);String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setPoliceSightings('"+safe+"')",null);});}
     }
     private void geocodeAndRoute() {
         String query = destinationQuery; destinationQuery = null;
@@ -201,6 +208,8 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         if(best==null)return;String key=best.key();cameraWarningTimes.put(key,now);lastCameraWarning=now;int feet=Math.max(100,Math.round((bestDistance*3.28084f)/50f)*50);String warning="Reported plate reader ahead in "+feet+" feet";
         speech.speak(warning,TextToSpeech.QUEUE_ADD,null,"alpr_"+key);if(mapReady)map.evaluateJavascript(String.format(Locale.US,"highlightFlock(%.7f,%.7f)",best.lat,best.lon),null);
     }
+    private void applyPoliceData(String body){policePoints.clear();try{JSONArray list=new JSONArray(body);for(int i=0;i<list.length();i++){JSONObject p=list.getJSONObject(i);policePoints.add(new PolicePoint(p.optLong("id"),p.getDouble("latitude"),p.getDouble("longitude")));}if(currentLocation!=null)checkPoliceWarnings(currentLocation);}catch(Exception ignored){}}
+    private void checkPoliceWarnings(Location location){if(!speechReady||policePoints.isEmpty()||location.getSpeed()<1.5f)return;long now=System.currentTimeMillis();if(now-lastPoliceWarning<30000L)return;float heading=location.hasBearing()?location.getBearing():routeHeading(location);PolicePoint best=null;float bestDistance=Float.MAX_VALUE;for(PolicePoint point:policePoints){float[] d=new float[2];Location.distanceBetween(location.getLatitude(),location.getLongitude(),point.lat,point.lon,d);if(d[0]>1200f||d[0]>=bestDistance)continue;float delta=Math.abs(((d[1]-heading+540f)%360f)-180f);if(delta>65f)continue;if(!routePoints.isEmpty()&&distanceToRouteMeters(new CameraPoint(point.lat,point.lon))>100d)continue;Long warned=policeWarningTimes.get(point.id);if(warned!=null&&now-warned<30L*60L*1000L)continue;best=point;bestDistance=d[0];}if(best==null)return;policeWarningTimes.put(best.id,now);lastPoliceWarning=now;speech.speak("Police vehicle ahead",TextToSpeech.QUEUE_ADD,null,"police_"+best.id);if(mapReady)map.evaluateJavascript(String.format(Locale.US,"highlightPolice(%.7f,%.7f)",best.lat,best.lon),null);}
     private float routeHeading(Location location){if(stepIndex<steps.size()){RouteStep s=steps.get(stepIndex);float[] d=new float[2];Location.distanceBetween(location.getLatitude(),location.getLongitude(),s.latitude,s.longitude,d);return d[1];}return 0f;}
     private double distanceToRouteMeters(CameraPoint c){double best=Double.MAX_VALUE;for(int i=1;i<routePoints.size();i++){best=Math.min(best,segmentDistanceMeters(c,routePoints.get(i-1),routePoints.get(i)));if(best<=20d)return best;}return best;}
     private double segmentDistanceMeters(CameraPoint p,RoutePoint a,RoutePoint b){double scale=Math.cos(Math.toRadians(p.lat));double ax=(a.lon-p.lon)*111320d*scale,ay=(a.lat-p.lat)*111320d,bx=(b.lon-p.lon)*111320d*scale,by=(b.lat-p.lat)*111320d;double vx=bx-ax,vy=by-ay,den=vx*vx+vy*vy,t=den==0?0:Math.max(0,Math.min(1,-(ax*vx+ay*vy)/den));return Math.hypot(ax+t*vx,ay+t*vy);}
@@ -222,11 +231,12 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private void showError(String message) { instruction.setText(message); new AlertDialog.Builder(this).setTitle("Navigation").setMessage(message).setPositiveButton("Close", (d,w) -> finish()).show(); }
     @Override public void onInit(int status) { speechReady = status == TextToSpeech.SUCCESS; if (speechReady) { speech.setLanguage(Locale.US); VoiceSettings.apply(this,speech); } }
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) Fullscreen.apply(this); }
-    @Override protected void onDestroy() { try { locationManager.removeUpdates(this); } catch (Exception ignored) {} network.shutdownNow();if(flockCameras!=null)flockCameras.shutdown(); speech.stop(); speech.shutdown(); map.destroy(); super.onDestroy(); }
+    @Override protected void onDestroy() { try { locationManager.removeUpdates(this); } catch (Exception ignored) {} network.shutdownNow();if(flockCameras!=null)flockCameras.shutdown();if(policeProvider!=null)policeProvider.shutdown(); speech.stop(); speech.shutdown(); map.destroy(); super.onDestroy(); }
     @Override public void onProviderEnabled(String provider) { }
     @Override public void onProviderDisabled(String provider) { }
     @Override public void onStatusChanged(String provider, int status, Bundle extras) { }
     private static class RouteStep { final double latitude, longitude; final String instruction,type,modifier;boolean atTrafficSignal;RouteStep(double latitude,double longitude,String instruction,String type,String modifier){this.latitude=latitude;this.longitude=longitude;this.instruction=instruction;this.type=type;this.modifier=modifier;}String guidance(){if(!atTrafficSignal)return instruction;String phrase=instruction.isEmpty()?instruction:instruction.substring(0,1).toLowerCase(Locale.US)+instruction.substring(1);if(type.equals("turn")||type.equals("fork")||type.equals("merge")||type.equals("new name"))return "At the next light, "+phrase;return instruction;}String icon(){if(type.contains("roundabout")||type.equals("rotary"))return "↻";if(type.equals("arrive"))return "◆";if(modifier.contains("left"))return "↰";if(modifier.contains("right"))return "↱";if(type.contains("ramp"))return "⇗";return "↑";}}
     private static class RoutePoint{final double lat,lon;RoutePoint(double a,double o){lat=a;lon=o;}}
     private static class CameraPoint{final double lat,lon;CameraPoint(double a,double o){lat=a;lon=o;}String key(){return String.format(Locale.US,"%.5f,%.5f",lat,lon);}}
+    private static class PolicePoint{final long id;final double lat,lon;PolicePoint(long i,double a,double o){id=i;lat=a;lon=o;}}
 }
