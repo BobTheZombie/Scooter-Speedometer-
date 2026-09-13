@@ -18,6 +18,8 @@ import android.view.WindowManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.TextView;
@@ -71,6 +73,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private long lastPoliceRefresh,lastPoliceWarning;
     private final List<PolicePoint> policePoints=new ArrayList<>();
     private final Map<Long,Long> policeWarningTimes=new HashMap<>();
+    private MapTileCache tileCache;
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -80,6 +83,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         flockCameras = new FlockCameraProvider(this);
         policeProvider = new PoliceSightingProvider();
+        tileCache = new MapTileCache(this);
         speech = new TextToSpeech(this, this);
         FrameLayout root = new FrameLayout(this);
         map = new WebView(this);
@@ -88,6 +92,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true); settings.setAllowFileAccess(true);settings.setCacheMode(WebSettings.LOAD_DEFAULT);settings.setLoadsImagesAutomatically(true);
         map.setWebViewClient(new WebViewClient() {
+            @Override public WebResourceResponse shouldInterceptRequest(WebView view,WebResourceRequest request){WebResourceResponse cached=tileCache.intercept(request);return cached!=null?cached:super.shouldInterceptRequest(view,request);}
             @Override public void onPageFinished(WebView view, String url) {
                 mapReady = true;
                 if (currentLocation != null) updateMapLocation(currentLocation);
@@ -155,7 +160,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private void requestRoute() {
         if (currentLocation == null || !hasDestination || System.currentTimeMillis() - lastRouteRequest < 8000) return;
         lastRouteRequest = System.currentTimeMillis(); double lon = currentLocation.getLongitude(), lat = currentLocation.getLatitude();
-        instruction.setText("Calculating scooter route…");
+        instruction.setText("OpenNAV+ • Calculating scooter route…");
         network.execute(() -> {
             HttpURLConnection connection = null;
             try {
@@ -206,7 +211,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         steps.clear(); steps.addAll(parsed); stepIndex = Math.min(1, Math.max(0, steps.size() - 1)); lastSpokenStep = -1;spokenStage=0;offRouteSince=0;
         routePoints.clear();routePoints.addAll(shape);
         if (mapReady) map.evaluateJavascript("setRoute(" + geometry + ")", null);
-        routeSummary=String.format(Locale.US, "%.1f mi  •  %d min  •  ETA %s", distance / 1609.344, Math.round(duration / 60),new java.text.SimpleDateFormat("h:mm a",Locale.US).format(new java.util.Date(System.currentTimeMillis()+(long)(duration*1000))));tripInfo.setText(routeSummary);
+        routeSummary=String.format(Locale.US, "%.1f mi  •  %d min  •  ETA %s  •  OpenNAV+", distance / 1609.344, Math.round(duration / 60),new java.text.SimpleDateFormat("h:mm a",Locale.US).format(new java.util.Date(System.currentTimeMillis()+(long)(duration*1000))));tripInfo.setText(routeSummary);
         if(guidanceActive){goButton.setVisibility(View.GONE);if(!steps.isEmpty())instruction.setText(steps.get(stepIndex).instruction);if(mapReady)map.evaluateJavascript("startGuidance()",null);}else{goButton.setVisibility(View.VISIBLE);instruction.setText("Route ready • Review the route, then tap GO");}
     }
     private void startGuidance(){if(steps.isEmpty())return;guidanceActive=true;goButton.setVisibility(View.GONE);stepIndex=Math.min(1,Math.max(0,steps.size()-1));lastSpokenStep=-1;spokenStage=0;instruction.setText(steps.get(stepIndex).instruction);if(mapReady)map.evaluateJavascript("startGuidance()",null);if(speechReady)speech.speak("Navigation started",TextToSpeech.QUEUE_ADD,null,"navigation_started");if(currentLocation!=null)updateGuidance(currentLocation);}
