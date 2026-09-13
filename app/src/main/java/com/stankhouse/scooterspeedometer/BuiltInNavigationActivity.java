@@ -84,8 +84,9 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         FrameLayout root = new FrameLayout(this);
         map = new WebView(this);
         map.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        map.setOverScrollMode(View.OVER_SCROLL_NEVER);map.setVerticalScrollBarEnabled(false);map.setHorizontalScrollBarEnabled(false);map.setBackgroundColor(Color.rgb(7,16,23));
         WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true); settings.setAllowFileAccess(true);
+        settings.setDomStorageEnabled(true); settings.setAllowFileAccess(true);settings.setCacheMode(WebSettings.LOAD_DEFAULT);settings.setLoadsImagesAutomatically(true);
         map.setWebViewClient(new WebViewClient() {
             @Override public void onPageFinished(WebView view, String url) {
                 mapReady = true;
