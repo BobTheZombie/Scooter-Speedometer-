@@ -79,7 +79,7 @@ A full-screen, offline Android GPS speedometer designed for scooters and mopeds.
 - Accuracy-aware adaptive GPS filtering with spike rejection and stationary-drift suppression
 - Custom dashboard editor with draggable/resizable media, speedometer, and navigation sections
 - Full and compact portrait/landscape presets, five gauge colors, three gauge styles, album-art opacity, and three saved layout slots
-- Built-in, key-free OpenStreetMap navigation with route line, ETA, live GPS following, turn cards, spoken maneuvers, and rerouting
+- OpenNAV+ key-free navigation with route line, ETA, live GPS following, cached map tiles, turn cards, spoken maneuvers, and rerouting
 - Spoken 15-minute rain, thunderstorm, snow, and dangerous-wind forecasts with duplicate cooldowns
 - Spoken National Weather Service alerts and tap-to-mute weather voice control
 - Freely movable weather widget with independent four-corner width/height resizing
@@ -109,7 +109,7 @@ Tap **Enable Music Controls** in the app and allow **Scooter Speedometer** under
 
 Tap **Navigate**, grant **Display over other apps** once, enter a destination, and choose Google Maps, Waze, or another navigation app. Navigation opens normally with a compact scooter dashboard floating above it. Drag the speed section vertically to reposition the dashboard, or tap **×** to close it.
 
-Choose **Built-in free navigation** to stay inside Scooter Speedometer. The embedded OpenStreetMap view follows the scooter, draws the route, displays the next maneuver and ETA, speaks turns, and requests a fresh route after a meaningful deviation. Address search uses Nominatim and online route calculation uses the community OSRM service, so this mode needs a data connection. Google Maps and Waze remain available as fallbacks.
+Choose **OpenNAV+** to stay inside Scooter Speedometer. The embedded OpenStreetMap view follows the scooter, draws the route, caches map tiles as they are viewed, displays the next maneuver and ETA, speaks turns, and requests a fresh route after a meaningful deviation. Address search uses Nominatim and online route calculation uses the community OSRM service, so new routes need a data connection. Google Maps and Waze remain available as fallbacks.
 
 ## Weather widget
 
