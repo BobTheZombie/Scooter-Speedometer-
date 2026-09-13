@@ -180,6 +180,8 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         for (int i = 0; i < json.length(); i++) {
             JSONObject item = json.getJSONObject(i), maneuver = item.getJSONObject("maneuver"); JSONArray point = maneuver.getJSONArray("location");
             String type = maneuver.optString("type", "continue"), modifier = maneuver.optString("modifier", ""), road = item.optString("name", "").trim();
+            if(road.isEmpty())road=item.optString("ref","").trim();
+            if(road.isEmpty())road=item.optString("destinations","").trim();
             String wording = maneuverWording(type,modifier,road,maneuver.optInt("exit",0));
             result.add(new RouteStep(point.getDouble(1), point.getDouble(0), wording,type,modifier));
         }
@@ -188,7 +190,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private String maneuverWording(String type,String modifier,String road,int exit){String onto=road.isEmpty()?"":" onto "+road;String direction=modifier.isEmpty()?"straight":modifier.replace("slight ","slightly ");
         if("depart".equals(type))return "Head "+direction+(road.isEmpty()?"":" on "+road);
         if("arrive".equals(type))return "Your destination is "+(modifier.contains("left")?"on the left":modifier.contains("right")?"on the right":"ahead");
-        if(type.contains("roundabout")||"rotary".equals(type))return "At the roundabout, take "+(exit>0?ordinal(exit)+" exit":"the exit")+onto;
+        if(type.contains("roundabout")||"rotary".equals(type))return "At the roundabout, take "+(exit>0?(exit<=10?ordinal(exit)+" exit":"exit number "+exit):"the exit")+onto;
         if("merge".equals(type))return "Merge "+direction+onto;
         if("fork".equals(type))return "Keep "+direction+onto;
         if("on ramp".equals(type))return "Take the ramp "+direction+onto;
@@ -197,7 +199,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         if("end of road".equals(type))return "At the end of the road, turn "+direction+onto;
         return "Turn "+direction+onto;
     }
-    private String ordinal(int number){if(number==1)return "the first";if(number==2)return "the second";if(number==3)return "the third";return "exit "+number;}
+    private String ordinal(int number){String[] words={"","the first","the second","the third","the fourth","the fifth","the sixth","the seventh","the eighth","the ninth","the tenth"};return number>0&&number<words.length?words[number]:"exit number "+number;}
     private List<RoutePoint> parseRouteShape(JSONObject geometry)throws Exception{List<RoutePoint> result=new ArrayList<>();JSONArray coordinates=geometry.getJSONArray("coordinates");for(int i=0;i<coordinates.length();i++){JSONArray p=coordinates.getJSONArray(i);result.add(new RoutePoint(p.getDouble(1),p.getDouble(0)));}return result;}
     private void applyRoute(String geometry, List<RouteStep> parsed, List<RoutePoint> shape, double distance, double duration) {
         steps.clear(); steps.addAll(parsed); stepIndex = Math.min(1, Math.max(0, steps.size() - 1)); lastSpokenStep = -1;spokenStage=0;offRouteSince=0;
@@ -228,12 +230,14 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         Location.distanceBetween(location.getLatitude(), location.getLongitude(), step.latitude, step.longitude, result); float metres = result[0];
         if (metres < 28 && stepIndex < steps.size() - 1) { stepIndex++; lastSpokenStep = -1;spokenStage=0; updateGuidance(location); return; }
         String wording=step.guidance();float feet=metres*3.28084f;
-        instruction.setText((feet>=5280?String.format(Locale.US,"%.1f mi",feet/5280f):Math.max(50,Math.round(feet/50f)*50)+" ft")+"  •  "+step.icon()+"  "+wording);
-        int stage=metres<=45?3:metres<=160?2:metres<=500?1:0;
-        if(speechReady&&stage>spokenStage){String lead=stage==3?"Now, ":stage==2?"In about 500 feet, ":"In about a quarter mile, ";speech.speak(lead+wording,TextToSpeech.QUEUE_ADD,null,"turn_"+stepIndex+"_"+stage);spokenStage=stage;lastSpokenStep=stepIndex;}
+        instruction.setText(formatVisualDistance(feet)+"  •  "+step.icon()+"  "+wording);
+        int stage=metres<=45?5:metres<=155?4:metres<=410?3:metres<=805?2:metres<=1610?1:0;
+        if(speechReady&&stage>spokenStage){speech.speak(spokenLead(stage)+wording,TextToSpeech.QUEUE_ADD,null,"turn_"+stepIndex+"_"+stage);spokenStage=stage;lastSpokenStep=stepIndex;}
         double routeDistance=distanceToRouteMeters(new RoutePoint(location.getLatitude(),location.getLongitude()));long now=System.currentTimeMillis();
         if(routeDistance>85){if(offRouteSince==0)offRouteSince=now;else if(now-offRouteSince>7000&&now-lastRouteRequest>15000){instruction.setText("Rerouting…");speech.speak("You are off route. Recalculating.",TextToSpeech.QUEUE_ADD,null,"reroute");requestRoute();offRouteSince=0;}}else offRouteSince=0;
     }
+    private String formatVisualDistance(float feet){if(feet>=1000f){float miles=feet/5280f;return miles>=10f?String.format(Locale.US,"%.0f mi",miles):String.format(Locale.US,"%.1f mi",miles);}return Math.max(50,Math.round(feet/50f)*50)+" ft";}
+    private String spokenLead(int stage){if(stage>=5)return "Now, ";if(stage==4)return "In 500 feet, ";if(stage==3)return "In a quarter mile, ";if(stage==2)return "In half a mile, ";return "In one mile, ";}
     private double distanceToRouteMeters(RoutePoint p){double best=Double.MAX_VALUE;CameraPoint probe=new CameraPoint(p.lat,p.lon);for(int i=1;i<routePoints.size();i++){best=Math.min(best,segmentDistanceMeters(probe,routePoints.get(i-1),routePoints.get(i)));if(best<12)return best;}return best;}
 
     private void markTrafficSignalTurns(List<RouteStep> parsed,List<RoutePoint> shape){if(shape.isEmpty()||parsed.isEmpty())return;double south=90,north=-90,west=180,east=-180;for(RoutePoint p:shape){south=Math.min(south,p.lat);north=Math.max(north,p.lat);west=Math.min(west,p.lon);east=Math.max(east,p.lon);}float[] span=new float[1];Location.distanceBetween(south,west,north,east,span);if(span[0]>65000)return;HttpURLConnection c=null;try{String query=String.format(Locale.US,"[out:json][timeout:12];node[highway=traffic_signals](%.6f,%.6f,%.6f,%.6f);out body;",south-.002,west-.002,north+.002,east+.002);c=open(new URL("https://overpass-api.de/api/interpreter?data="+android.net.Uri.encode(query)));JSONArray nodes=new JSONObject(read(c)).getJSONArray("elements");for(RouteStep step:parsed){if("depart".equals(step.type)||"arrive".equals(step.type)||"continue".equals(step.type))continue;for(int i=0;i<nodes.length();i++){JSONObject n=nodes.getJSONObject(i);float[] d=new float[1];Location.distanceBetween(step.latitude,step.longitude,n.getDouble("lat"),n.getDouble("lon"),d);if(d[0]<=38){step.atTrafficSignal=true;break;}}}}catch(Exception ignored){}finally{if(c!=null)c.disconnect();}}
