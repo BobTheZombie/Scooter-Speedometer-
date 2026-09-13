@@ -27,6 +27,14 @@ import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.speech.tts.TextToSpeech;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.HashMap;
+import java.util.Map;
 
 public class RiderLinkActivity extends Activity implements LocationListener {
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -42,12 +50,18 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     private FlockCameraProvider flockCameras;
     private long lastFlockRefresh;
     private boolean openProfileRequested;
+    private PoliceSightingProvider policeProvider;
+    private long lastPoliceRefresh,lastPoliceWarning;
+    private final List<PolicePoint> policePoints=new ArrayList<>();
+    private TextToSpeech speech;
+    private boolean speechReady;
+    private final Map<Long,Long> policeWarningTimes=new HashMap<>();
     private final Runnable publish = new Runnable() {
         @Override public void run() { if (fix != null) refreshNearby(); handler.postDelayed(this, 10000L); }
     };
 
     @Override protected void onCreate(Bundle state) {
-        super.onCreate(state); client = new RiderLinkClient(this); flockCameras=new FlockCameraProvider(this); locations = (LocationManager) getSystemService(LOCATION_SERVICE);openProfileRequested=getIntent().getBooleanExtra("open_profile",false);
+        super.onCreate(state); client = new RiderLinkClient(this); flockCameras=new FlockCameraProvider(this);policeProvider=new PoliceSightingProvider();speech=new TextToSpeech(this,s->{speechReady=s==TextToSpeech.SUCCESS;if(speechReady){speech.setLanguage(Locale.US);VoiceSettings.apply(this,speech);}}); locations = (LocationManager) getSystemService(LOCATION_SERVICE);openProfileRequested=getIntent().getBooleanExtra("open_profile",false);
         Fullscreen.apply(this);
         if (client.signedIn()) showRiderLink(); else showAuthentication();
     }
@@ -199,6 +213,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         });
         client.nearbyCommunityHazards(fix.getLatitude(),fix.getLongitude(),(ok,message,body)->{if(!ok)return;String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");map.evaluateJavascript("setCommunityHazards('"+safe+"')",null);});
         if(System.currentTimeMillis()-lastFlockRefresh>15L*60L*1000L){lastFlockRefresh=System.currentTimeMillis();flockCameras.nearby(fix.getLatitude(),fix.getLongitude(),(ok,body,message)->{if(!ok){lastFlockRefresh=0;status.setText("ALPR feed unavailable • tap REFRESH to retry");if(mapReady)map.evaluateJavascript("document.getElementById('flockToggle').textContent='ALPR RETRY'",null);return;}String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setFlockHopperCameras('"+safe+"')",null);});}
+        if(System.currentTimeMillis()-lastPoliceRefresh>30L*1000L){lastPoliceRefresh=System.currentTimeMillis();policeProvider.nearby(fix.getLatitude(),fix.getLongitude(),(ok,body,message)->{if(!ok){lastPoliceRefresh=0;return;}policePoints.clear();try{JSONArray list=new JSONArray(body);for(int i=0;i<list.length();i++){JSONObject p=list.getJSONObject(i);policePoints.add(new PolicePoint(p.optLong("id"),p.getDouble("latitude"),p.getDouble("longitude")));}}catch(Exception ignored){}String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setPoliceSightings('"+safe+"')",null);checkPoliceAhead();});}
     }
 
     private void beginSosCountdown() {
@@ -222,15 +237,17 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         });
     }
 
-    @Override public void onLocationChanged(Location location) { fix = location; if (mapReady) { map.evaluateJavascript("setMe(" + location.getLatitude() + "," + location.getLongitude() + ")", null); refreshNearby(); } }
+    @Override public void onLocationChanged(Location location) { fix = location;checkPoliceAhead(); if (mapReady) { map.evaluateJavascript("setMe(" + location.getLatitude() + "," + location.getLongitude() + ")", null); refreshNearby(); } }
+    private void checkPoliceAhead(){long now=System.currentTimeMillis();if(!speechReady||fix==null||fix.getSpeed()<1.5f||now-lastPoliceWarning<30000L)return;float heading=fix.hasBearing()?fix.getBearing():0;for(PolicePoint p:policePoints){float[] d=new float[2];Location.distanceBetween(fix.getLatitude(),fix.getLongitude(),p.lat,p.lon,d);float delta=Math.abs(((d[1]-heading+540f)%360f)-180f);Long warned=policeWarningTimes.get(p.id);if(d[0]<=800f&&delta<=60f&&(warned==null||now-warned>30L*60L*1000L)){lastPoliceWarning=now;policeWarningTimes.put(p.id,now);speech.speak("Police vehicle ahead",TextToSpeech.QUEUE_ADD,null,"riderlink_police_"+p.id);return;}}}
     @Override public void onProviderEnabled(String provider) { }
     @Override public void onProviderDisabled(String provider) { }
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) { super.onRequestPermissionsResult(requestCode, permissions, results); if (requestCode == 77 && results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) startLocation(); }
     @Override protected void onPause() { super.onPause(); if (sharing != null && sharing.isChecked()) status.setText("Sharing pauses when RiderLink closes"); }
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) Fullscreen.apply(this); }
-    @Override protected void onDestroy() { handler.removeCallbacksAndMessages(null); try { locations.removeUpdates(this); } catch (SecurityException ignored) { } if (client != null) client.shutdown(); if(flockCameras!=null)flockCameras.shutdown(); if (map != null) map.destroy(); super.onDestroy(); }
+    @Override protected void onDestroy() { handler.removeCallbacksAndMessages(null); try { locations.removeUpdates(this); } catch (SecurityException ignored) { } if (client != null) client.shutdown(); if(flockCameras!=null)flockCameras.shutdown();if(policeProvider!=null)policeProvider.shutdown();if(speech!=null){speech.stop();speech.shutdown();} if (map != null) map.destroy(); super.onDestroy(); }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private int systemBarHeight(String name){int id=getResources().getIdentifier(name,"dimen","android");return id>0?getResources().getDimensionPixelSize(id):0;}
     private void toast(String value) { Toast.makeText(this, value, Toast.LENGTH_LONG).show(); }
     private Button compactButton(String label,int color,float size){Button b=button(label,color);b.setSingleLine(true);b.setTextSize(size);b.setMinWidth(0);b.setMinimumWidth(0);b.setPadding(dp(2),0,dp(2),0);return b;}
+    private static class PolicePoint{final long id;final double lat,lon;PolicePoint(long i,double a,double o){id=i;lat=a;lon=o;}}
 }
