@@ -1,0 +1,23 @@
+name: Publish v7.7 release
+on:
+  push:
+    branches: [main]
+    paths: [release/Scooter-Speedometer-v7.7.apk.b64]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct signed APK
+        run: base64 --decode release/Scooter-Speedometer-v7.7.apk.b64 > Scooter-Speedometer-v7.7.apk
+      - name: Verify checksum
+        run: echo "fa1597cc3babc6439245a7644ec1bf10356be5407c513f570104032c1f64c7a1  Scooter-Speedometer-v7.7.apk" | sha256sum --check
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v7.7 Scooter-Speedometer-v7.7.apk \
+            --title "Scooter Speedometer v7.7 — OpenNAV+" \
+            --notes "Renames built-in navigation to OpenNAV+. Adds a bounded native map tile cache, stale-tile fallback, seam-resistant GPU rendering, gesture-aware follow mode, and a recenter control."
