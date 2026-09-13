@@ -413,7 +413,7 @@ public class MainActivity extends Activity implements LocationListener {
     }
 
     private void chooseNavigationApp(String destination) {
-        String[] apps = {"Built-in free navigation", "Google Maps", "Waze", "Another navigation app"};
+        String[] apps = {"OpenNAV+", "Google Maps", "Waze", "Another navigation app"};
         new AlertDialog.Builder(this)
                 .setTitle("Navigate with")
                 .setItems(apps, (dialog, which) -> launchNavigation(destination, which))
