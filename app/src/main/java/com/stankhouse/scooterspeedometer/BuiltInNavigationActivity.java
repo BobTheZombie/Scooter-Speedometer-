@@ -23,6 +23,7 @@ import android.webkit.WebResourceResponse;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.TextView;
+import android.content.SharedPreferences;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -51,6 +52,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private double destinationLatitude, destinationLongitude;
     private boolean hasDestination;
     private String destinationQuery;
+    private String destinationLabel;
     private TextView instruction, tripInfo;
     private Button goButton;
     private boolean guidanceActive;
@@ -74,16 +76,22 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private final List<PolicePoint> policePoints=new ArrayList<>();
     private final Map<Long,Long> policeWarningTimes=new HashMap<>();
     private MapTileCache tileCache;
+    private OfflineRegionManager offlineRegions;
+    private SharedPreferences navPrefs;
+    private boolean waitingForNetwork;
+    private final Runnable routeRecovery=new Runnable(){@Override public void run(){if(waitingForNetwork&&!isFinishing()){lastRouteRequest=0;requestRoute();main.postDelayed(this,15000L);}}};
 
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state);
         Fullscreen.apply(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        destinationQuery = getIntent().getStringExtra("destination");
+        destinationQuery = getIntent().getStringExtra("destination");destinationLabel=destinationQuery;
+        navPrefs=getSharedPreferences("speedometer",MODE_PRIVATE);
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         flockCameras = new FlockCameraProvider(this);
         policeProvider = new PoliceSightingProvider();
         tileCache = new MapTileCache(this);
+        offlineRegions=new OfflineRegionManager(this);
         speech = new TextToSpeech(this, this);
         FrameLayout root = new FrameLayout(this);
         map = new WebView(this);
@@ -96,6 +104,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
             @Override public void onPageFinished(WebView view, String url) {
                 mapReady = true;
                 if (currentLocation != null) updateMapLocation(currentLocation);
+                String offline=offlineRegions.data();if(!offline.isEmpty()){String safe=offline.replace("\\","\\\\").replace("'","\\'").replace("\n","");map.evaluateJavascript("setOfflineRegion('"+safe+"')",null);}
             }
         });
         map.loadUrl("file:///android_asset/map.html");
@@ -147,7 +156,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         instruction.setText("Finding “" + query + "”…");
         network.execute(() -> {
             try {
-                GeocodingService.Result result=GeocodingService.geocode(query,currentLocation);
+                GeocodingService.Result result=GeocodingService.geocode(this,query,currentLocation);
                 main.post(() -> { destinationLatitude = result.latitude; destinationLongitude = result.longitude; hasDestination = true; instruction.setText("Found via "+result.source+" • Calculating route…");requestRoute(); });
             } catch (Exception error) { main.post(() -> showError(error.getMessage())); }
         });
@@ -159,17 +168,19 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         network.execute(() -> {
             HttpURLConnection connection = null;
             try {
-                String endpoint = String.format(Locale.US, "https://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true&alternatives=true", lon, lat, destinationLongitude, destinationLatitude);
-                connection = open(new URL(endpoint)); JSONArray candidates=new JSONObject(read(connection)).getJSONArray("routes");JSONObject route = candidates.getJSONObject(0);
+                boolean avoid=navPrefs.getBoolean("opennav_avoid_highways",true);String endpoint = String.format(Locale.US, "https://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true&alternatives=true%s", lon, lat, destinationLongitude, destinationLatitude,avoid?"&exclude=motorway,toll":"");
+                connection = open(new URL(endpoint));String payload=read(connection);JSONArray candidates=new JSONObject(payload).getJSONArray("routes");JSONObject route = candidates.getJSONObject(0);
                 String geometry = route.getJSONObject("geometry").toString(); double distance = route.getDouble("distance"), duration = route.getDouble("duration");
                 List<RouteStep> parsed = parseSteps(route.getJSONArray("legs").getJSONObject(0).getJSONArray("steps"));
                 List<RoutePoint> routeShape=parseRouteShape(route.getJSONObject("geometry"));
                 markTrafficSignalTurns(parsed,routeShape);
-                main.post(() -> applyRoute(geometry, parsed, routeShape, distance, duration));
-            } catch (Exception error) { main.post(() -> showError("Route unavailable: " + error.getMessage())); }
+                cacheRoute(route);waitingForNetwork=false;main.removeCallbacks(routeRecovery);main.post(() -> applyRoute(geometry, parsed, routeShape, distance, duration));
+            } catch (Exception error) { main.post(() -> {if(restoreCachedRoute()){instruction.setText("OFFLINE GUIDANCE • Cached route");waitingForNetwork=true;main.removeCallbacks(routeRecovery);main.postDelayed(routeRecovery,15000L);}else{waitingForNetwork=true;instruction.setText("Waiting for signal • Route will recover automatically");main.removeCallbacks(routeRecovery);main.postDelayed(routeRecovery,15000L);}}); }
             finally { if (connection != null) connection.disconnect(); }
         });
     }
+    private void cacheRoute(JSONObject route){try{navPrefs.edit().putString("opennav_cached_route",route.toString()).putString("opennav_cached_destination",destinationLabel==null?"":destinationLabel).putLong("opennav_cached_at",System.currentTimeMillis()).apply();}catch(Exception ignored){}}
+    private boolean restoreCachedRoute(){try{String raw=navPrefs.getString("opennav_cached_route","");String saved=navPrefs.getString("opennav_cached_destination","");if(raw.isEmpty()||destinationLabel==null||!saved.equalsIgnoreCase(destinationLabel)||System.currentTimeMillis()-navPrefs.getLong("opennav_cached_at",0)>7L*24L*60L*60L*1000L)return false;JSONObject route=new JSONObject(raw);String geometry=route.getJSONObject("geometry").toString();List<RouteStep> parsed=parseSteps(route.getJSONArray("legs").getJSONObject(0).getJSONArray("steps"));List<RoutePoint> shape=parseRouteShape(route.getJSONObject("geometry"));applyRoute(geometry,parsed,shape,route.getDouble("distance"),route.getDouble("duration"));return true;}catch(Exception ignored){return false;}}
     private HttpURLConnection open(URL url) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setConnectTimeout(10000); connection.setReadTimeout(12000);
@@ -246,7 +257,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private void showError(String message) { instruction.setText(message); new AlertDialog.Builder(this).setTitle("Navigation").setMessage(message).setPositiveButton("Close", (d,w) -> finish()).show(); }
     @Override public void onInit(int status) { speechReady = status == TextToSpeech.SUCCESS; if (speechReady) { speech.setLanguage(Locale.US); VoiceSettings.apply(this,speech); } }
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) Fullscreen.apply(this); }
-    @Override protected void onDestroy() { try { locationManager.removeUpdates(this); } catch (Exception ignored) {} network.shutdownNow();if(flockCameras!=null)flockCameras.shutdown();if(policeProvider!=null)policeProvider.shutdown(); speech.stop(); speech.shutdown(); map.destroy(); super.onDestroy(); }
+    @Override protected void onDestroy() { main.removeCallbacks(routeRecovery);try { locationManager.removeUpdates(this); } catch (Exception ignored) {} network.shutdownNow();if(flockCameras!=null)flockCameras.shutdown();if(policeProvider!=null)policeProvider.shutdown();if(offlineRegions!=null)offlineRegions.shutdown(); speech.stop(); speech.shutdown(); map.destroy(); super.onDestroy(); }
     @Override public void onProviderEnabled(String provider) { }
     @Override public void onProviderDisabled(String provider) { }
     @Override public void onStatusChanged(String provider, int status, Bundle extras) { }
