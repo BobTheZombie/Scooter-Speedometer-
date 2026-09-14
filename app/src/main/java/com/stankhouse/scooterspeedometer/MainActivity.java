@@ -87,6 +87,7 @@ public class MainActivity extends Activity implements LocationListener {
     private RideRecorder rideRecorder;
     private CrashDetector crashDetector;
     private UpdateManager updateManager;
+    private RiderCopilot riderCopilot;
     private String roadAlert = "";
     private long roadAlertUntil;
     private boolean weatherConsentPrompted,notificationConsentPrompted;
@@ -128,6 +129,7 @@ public class MainActivity extends Activity implements LocationListener {
         rideRecorder = new RideRecorder(this);
         crashDetector = new CrashDetector(this,force -> runOnUiThread(this::showCrashCheckIn));
         updateManager = new UpdateManager(this);
+        riderCopilot = new RiderCopilot(this, this::setHudVoiceStatus);
         crashDetector.setEnabled(prefs.getBoolean("crash_detection",false));
         weatherData = weatherRepository.cached();
         weatherAlert = weatherRepository.cachedAlert();
@@ -156,7 +158,7 @@ public class MainActivity extends Activity implements LocationListener {
         Intent listen=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);listen.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);listen.putExtra(RecognizerIntent.EXTRA_LANGUAGE,Locale.getDefault());listen.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,5);listen.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS,false);listen.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,1100L);listen.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,700L);speechRecognizer.startListening(listen);
     }
     private void setHudVoiceStatus(String value){hudVoiceStatus=value;hudVoiceStatusUntil=SystemClock.elapsedRealtime()+4500L;if(speedView!=null)speedView.invalidate();}
-    private void executeVoiceCommand(List<String> candidates){String heard=candidates.get(0).toLowerCase(Locale.US);String done="COMMAND NOT RECOGNIZED";for(String raw:candidates){String command=raw.toLowerCase(Locale.US);if(command.contains("navigate")||command.contains("directions")){beginNavigation();done="OPENING NAVIGATION";break;}if(command.contains("backup")||command.contains("rear camera")){openBackupCamera();done="OPENING BACKUP CAMERA";break;}if(command.contains("rider")||command.contains("social")){startActivity(new Intent(this,RiderLinkActivity.class));done="OPENING RIDERLINK";break;}if(command.contains("next")&&command.contains("song")){mediaNext();done="NEXT TRACK";break;}if(command.contains("previous")||command.contains("last song")){mediaPrevious();done="PREVIOUS TRACK";break;}if(command.contains("pause")||command.contains("play")){mediaPlayPause();done="MEDIA TOGGLED";break;}if(command.contains("volume up")||command.contains("louder")){adjustMusicVolume(AudioManager.ADJUST_RAISE);done="VOLUME UP";break;}if(command.contains("volume down")||command.contains("quieter")){adjustMusicVolume(AudioManager.ADJUST_LOWER);done="VOLUME DOWN";break;}if(command.contains("weather")||command.contains("forecast")){requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);done="REFRESHING WEATHER";break;}if(command.contains("hazard")){showHazardPicker();done="CHOOSE HAZARD";break;}if(command.contains("customize")||command.contains("settings")){speedView.showDashboardCustomizer();done="OPENING CUSTOMIZE";break;}}
+    private void executeVoiceCommand(List<String> candidates){String heard=candidates.get(0).toLowerCase(Locale.US);String done="COMMAND NOT RECOGNIZED";for(String raw:candidates){String command=raw.toLowerCase(Locale.US);if(command.contains("copilot")&&(command.contains("brief")||command.contains("status")||command.contains("report"))){riderCopilot.announceBriefing(weatherData,lastGoodLocation,smoothedMps,tripMeters,satellites);done="RIDE BRIEFING";break;}if(command.contains("navigate")||command.contains("directions")){beginNavigation();done="OPENING NAVIGATION";break;}if(command.contains("backup")||command.contains("rear camera")){openBackupCamera();done="OPENING BACKUP CAMERA";break;}if(command.contains("rider")||command.contains("social")){startActivity(new Intent(this,RiderLinkActivity.class));done="OPENING RIDERLINK";break;}if(command.contains("next")&&command.contains("song")){mediaNext();done="NEXT TRACK";break;}if(command.contains("previous")||command.contains("last song")){mediaPrevious();done="PREVIOUS TRACK";break;}if(command.contains("pause")||command.contains("play")){mediaPlayPause();done="MEDIA TOGGLED";break;}if(command.contains("volume up")||command.contains("louder")){adjustMusicVolume(AudioManager.ADJUST_RAISE);done="VOLUME UP";break;}if(command.contains("volume down")||command.contains("quieter")){adjustMusicVolume(AudioManager.ADJUST_LOWER);done="VOLUME DOWN";break;}if(command.contains("weather")||command.contains("forecast")){requestWeather(lastGoodLocation==null?0:lastGoodLocation.getLatitude(),lastGoodLocation==null?0:lastGoodLocation.getLongitude(),true);done="REFRESHING WEATHER";break;}if(command.contains("hazard")){showHazardPicker();done="CHOOSE HAZARD";break;}if(command.contains("customize")||command.contains("settings")){speedView.showDashboardCustomizer();done="OPENING CUSTOMIZE";break;}}
         setHudVoiceStatus(done+("COMMAND NOT RECOGNIZED".equals(done)?" • "+heard.toUpperCase(Locale.US):""));
     }
 
@@ -169,6 +171,7 @@ public class MainActivity extends Activity implements LocationListener {
         super.onResume();
         enterImmersive();
         nightMode.start();
+        if (riderCopilot != null) riderCopilot.start();
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) startGps();
         refreshMedia();
         if (audioRack != null) audioRack.refresh();
@@ -235,7 +238,7 @@ public class MainActivity extends Activity implements LocationListener {
     private void saveWeatherLocation(String name,double lat,double lon){prefs.edit().putBoolean("weather_custom_location",true).putString("weather_custom_name",name).putLong("weather_custom_lat",Double.doubleToRawLongBits(lat)).putLong("weather_custom_lon",Double.doubleToRawLongBits(lon)).apply();requestWeather(0,0,true);}
     private void showWeatherLocationSearch(){EditText input=weatherInput("City, state or ZIP code");new AlertDialog.Builder(this).setTitle("Search weather location").setView(input).setPositiveButton("SEARCH",(d,w)->{String q=input.getText().toString().trim();if(q.isEmpty())return;android.widget.Toast.makeText(this,"Finding "+q+"…",android.widget.Toast.LENGTH_SHORT).show();weatherRepository.geocode(q,(ok,label,lat,lon)->{if(ok){saveWeatherLocation(label,lat,lon);android.widget.Toast.makeText(this,"Weather location: "+label,android.widget.Toast.LENGTH_LONG).show();}else android.widget.Toast.makeText(this,"Location not found",android.widget.Toast.LENGTH_LONG).show();});}).setNegativeButton("Cancel",null).show();}
     private void showWeatherCoordinates(){LinearLayout panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(24,8,24,8);EditText lat=weatherInput("Latitude, e.g. 42.2917"),lon=weatherInput("Longitude, e.g. -85.5872");lat.setInputType(android.text.InputType.TYPE_CLASS_NUMBER|android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL|android.text.InputType.TYPE_NUMBER_FLAG_SIGNED);lon.setInputType(lat.getInputType());panel.addView(lat);panel.addView(lon);new AlertDialog.Builder(this).setTitle("Custom coordinates").setView(panel).setPositiveButton("USE LOCATION",(d,w)->{try{double a=Double.parseDouble(lat.getText().toString()),o=Double.parseDouble(lon.getText().toString());if(a < -90||a>90||o < -180||o>180)throw new Exception();saveWeatherLocation(String.format(Locale.US,"%.3f, %.3f",a,o),a,o);}catch(Exception e){android.widget.Toast.makeText(this,"Enter valid latitude and longitude",android.widget.Toast.LENGTH_LONG).show();}}).setNegativeButton("Cancel",null).show();}
-    @Override protected void onPause() { super.onPause(); nightMode.stop(); stopGps(); stopMediaListener(); saveStats(); if(deliveryCockpit!=null)deliveryCockpit.flushMileage(); }
+    @Override protected void onPause() { super.onPause(); nightMode.stop(); if(riderCopilot!=null)riderCopilot.stop(); stopGps(); stopMediaListener(); saveStats(); if(deliveryCockpit!=null)deliveryCockpit.flushMileage(); }
 
     private void startGps() {
         try {
@@ -463,6 +466,7 @@ public class MainActivity extends Activity implements LocationListener {
         nightMode.updateLocation(location.getLatitude(), location.getLongitude());
         roadAwareness.update(location, smoothedMps);
         deliveryCockpit.updateMileage(location);rideRecorder.update(location);crashDetector.update(location);
+        if(riderCopilot!=null)riderCopilot.update(location,smoothedMps,tripMeters,satellites,weatherData);
         if (prefs.getBoolean("weather_provider_consent", false) &&
                 SystemClock.elapsedRealtime() - lastWeatherRequest > weatherRepository.refreshMs())
             requestWeather(location.getLatitude(),location.getLongitude(),false);
@@ -565,6 +569,7 @@ public class MainActivity extends Activity implements LocationListener {
         if(crashDetector!=null)crashDetector.stop();
         if(audioRack!=null)audioRack.release();
         if(updateManager!=null)updateManager.destroy();
+        if(riderCopilot!=null)riderCopilot.shutdown();
         super.onDestroy();
     }
 
