@@ -1,0 +1,98 @@
+name: Bootstrap signed v8 release
+
+on:
+  push:
+    branches: [v8-rider-copilot]
+    paths:
+      - .github/workflows/v8-release-bootstrap.yml
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+      KEY_ALIAS: scooter-v8
+      KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v8-rider-copilot
+
+      - name: Verify signing secret
+        shell: bash
+        run: |
+          if [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::V8_SIGNING_PASSWORD is not configured"
+            exit 1
+          fi
+          if [ "${#KEY_PASSWORD}" -lt 12 ]; then
+            echo "::error::V8_SIGNING_PASSWORD must contain at least 12 characters"
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Generate permanent v8 signing identity
+        shell: bash
+        run: |
+          keytool -genkeypair -noprompt             -keystore "$KEYSTORE_PATH"             -storetype PKCS12             -storepass:env KEY_PASSWORD             -keypass:env KEY_PASSWORD             -alias "$KEY_ALIAS"             -keyalg RSA             -keysize 4096             -validity 10000             -dname "CN=BobTheZombie, OU=RiderLink, O=Stankhouse, L=Kalamazoo, ST=Michigan, C=US"
+          mkdir -p signing
+          keytool -exportcert -rfc             -keystore "$KEYSTORE_PATH"             -storepass:env KEY_PASSWORD             -alias "$KEY_ALIAS" > signing/v8-release-certificate.pem
+          keytool -list -v             -keystore "$KEYSTORE_PATH"             -storepass:env KEY_PASSWORD             -alias "$KEY_ALIAS" | sed -n '/SHA256:/p' > signing/v8-release-fingerprint.txt
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 600000             -in "$KEYSTORE_PATH"             -out signing/v8-release-key.p12.enc             -pass env:KEY_PASSWORD
+          printf '%s\n'             'Scooter Speedometer v8 signing-key backup'             ''             'Keep V8_SIGNING_PASSWORD in a password manager.'             'Restore command:'             'openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in v8-release-key.p12.enc -out v8-release-key.p12'             ''             'Alias: scooter-v8' > signing/RESTORE.txt
+
+      - name: Build signed production APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+          ANDROID_KEY_ALIAS: scooter-v8
+          ANDROID_KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify APK certificate
+        shell: bash
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs             app/build/outputs/apk/release/app-release.apk
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk             dist/Scooter-Speedometer-v8.0.0-release.apk
+          (cd signing && zip -9 ../dist/Scooter-Speedometer-v8-signing-backup.zip             v8-release-key.p12.enc v8-release-certificate.pem             v8-release-fingerprint.txt RESTORE.txt)
+
+      - name: Preserve encrypted signing identity
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add signing/v8-release-key.p12.enc             signing/v8-release-certificate.pem             signing/v8-release-fingerprint.txt signing/RESTORE.txt
+          git commit -m "Preserve encrypted v8 release signing identity"
+          git push origin HEAD:v8-rider-copilot
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Scooter-Speedometer-v8.0.0-release
+          path: dist/Scooter-Speedometer-v8.0.0-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Scooter-Speedometer-v8-signing-backup
+          path: dist/Scooter-Speedometer-v8-signing-backup.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove plaintext key
+        if: always()
+        shell: bash
+        run: rm -f "$KEYSTORE_PATH"
