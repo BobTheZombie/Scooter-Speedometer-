@@ -1,0 +1,22 @@
+name: Publish v7.9.1 hotfix
+on:
+  push:
+    branches: [main]
+    paths: [release/v7.9.1/apk.part04]
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify APK
+        run: |
+          cat release/v7.9.1/apk.part* > apk.b64
+          base64 --decode apk.b64 > Scooter-Speedometer-v7.9.1.apk
+          echo "8f9550294f452706a24117ead37e3e98fc9d1e6b65f76a956935718e286a57d5  Scooter-Speedometer-v7.9.1.apk" | sha256sum --check -
+      - name: Publish hotfix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v7.9.1 Scooter-Speedometer-v7.9.1.apk --title "Scooter Speedometer v7.9.1" --notes "OpenNAV+ routing hotfix. Fixes indefinite Waiting for signal caused by unsupported combined route exclusions. Adds immediate route-profile fallback, low-highway alternative selection, clearer failure status, and automatic recovery for genuine network outages. Android 6.0+ • versionCode 62."
