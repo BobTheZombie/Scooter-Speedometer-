@@ -17,20 +17,12 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Debounced, location-biased destination suggestions backed by OpenStreetMap Nominatim. */
+/** Debounced, location-biased destination suggestions backed by Photon and Census. */
 final class AddressAutocompleteDialog {
     interface Listener { void onDestination(String destination); }
 
@@ -46,7 +38,6 @@ final class AddressAutocompleteDialog {
     private TextView status;
     private AlertDialog dialog;
     private int generation;
-    private long lastRequestAt;
 
     AddressAutocompleteDialog(Activity activity, Location location, Listener listener) {
         this.activity = activity; this.location = location; this.listener = listener;
@@ -96,18 +87,7 @@ final class AddressAutocompleteDialog {
         if(query.length()<3||network.isShutdown())return;
         network.execute(() -> {
             try {
-                long wait=Math.max(0,1050-(System.currentTimeMillis()-lastRequestAt)); if(wait>0)Thread.sleep(wait);
-                lastRequestAt=System.currentTimeMillis();
-                StringBuilder endpoint=new StringBuilder("https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=6&q=")
-                        .append(android.net.Uri.encode(query));
-                if(location!=null){double lat=location.getLatitude(),lon=location.getLongitude();endpoint.append(String.format(Locale.US,"&viewbox=%.5f,%.5f,%.5f,%.5f&bounded=0",lon-.7,lat+.5,lon+.7,lat-.5));}
-                HttpURLConnection c=(HttpURLConnection)new URL(endpoint.toString()).openConnection();
-                c.setConnectTimeout(8000);c.setReadTimeout(10000);
-                c.setRequestProperty("User-Agent","Scooter-Speedometer/7.2 (github.com/BobTheZombie/Scooter-Speedometer-)");
-                BufferedReader reader=new BufferedReader(new InputStreamReader(c.getInputStream()));StringBuilder body=new StringBuilder();String line;
-                while((line=reader.readLine())!=null)body.append(line);reader.close();c.disconnect();
-                JSONArray json=new JSONArray(body.toString());List<String> found=new ArrayList<>();
-                for(int i=0;i<json.length();i++){JSONObject item=json.getJSONObject(i);String label=item.optString("display_name","").trim();if(!label.isEmpty()&&!found.contains(label))found.add(label);}
+                List<String> found=GeocodingService.suggestions(query,location);
                 main.post(() -> applyResults(requestGeneration,found));
             } catch(Exception error) { main.post(() -> {if(requestGeneration==generation)status.setText("Suggestions unavailable — you can still use the typed address");}); }
         });
