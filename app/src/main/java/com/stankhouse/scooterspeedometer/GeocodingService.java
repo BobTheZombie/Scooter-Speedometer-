@@ -1,6 +1,7 @@
 package com.stankhouse.scooterspeedometer;
 
 import android.location.Location;
+import android.content.Context;
 import android.net.Uri;
 
 import org.json.JSONArray;
@@ -35,9 +36,10 @@ final class GeocodingService {
     private GeocodingService() { }
 
     /** Photon explicitly supports search-as-you-type. Census adds an exact U.S. match. */
-    static List<String> suggestions(String query, Location location) throws Exception {
+    static List<String> suggestions(Context context,String query, Location location) throws Exception {
         List<String> labels = new ArrayList<>();
         Set<String> unique = new LinkedHashSet<>();
+        for(Result result:OfflineRegionManager.search(context,query,5))if(unique.add(result.label))labels.add(result.label+"  • OFFLINE");
         for (Result result : photon(query, location, 7)) {
             if (unique.add(result.label)) labels.add(result.label);
         }
@@ -49,12 +51,14 @@ final class GeocodingService {
     }
 
     /** Resolve with OSM first, Census for missing U.S. addresses, then typo-tolerant Photon. */
-    static Result geocode(String query, Location location) throws Exception {
-        Result osm = nominatim(query, location);
-        if (osm != null) return osm;
-        Result census = census(query);
+    static Result geocode(Context context,String query, Location location) throws Exception {
+        query=query.replace("  • OFFLINE","").trim();
+        try { Result osm = nominatim(query, location);if (osm != null) return osm; } catch(Exception ignored) { }
+        Result offline=null;List<Result> stored=OfflineRegionManager.search(context,query,1);if(!stored.isEmpty())offline=stored.get(0);
+        if(offline!=null)return offline;
+        Result census=null;try{census = census(query);}catch(Exception ignored){}
         if (census != null) return census;
-        List<Result> photon = photon(query, location, 1);
+        List<Result> photon=new ArrayList<>();try{photon = photon(query, location, 1);}catch(Exception ignored){}
         if (!photon.isEmpty()) return photon.get(0);
         throw new Exception("Address not found. Try including the street number, city, state, and ZIP.");
     }
