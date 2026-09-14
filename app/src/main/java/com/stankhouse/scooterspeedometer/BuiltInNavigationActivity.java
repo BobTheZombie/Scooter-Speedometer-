@@ -146,15 +146,10 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         String query = destinationQuery; destinationQuery = null;
         instruction.setText("Finding “" + query + "”…");
         network.execute(() -> {
-            HttpURLConnection connection = null;
             try {
-                connection = open(new URL("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=" + android.net.Uri.encode(query)));
-                JSONArray results = new JSONArray(read(connection));
-                if (results.length() == 0) throw new Exception("Destination not found");
-                JSONObject item = results.getJSONObject(0); double lat = item.getDouble("lat"), lon = item.getDouble("lon");
-                main.post(() -> { destinationLatitude = lat; destinationLongitude = lon; hasDestination = true; requestRoute(); });
+                GeocodingService.Result result=GeocodingService.geocode(query,currentLocation);
+                main.post(() -> { destinationLatitude = result.latitude; destinationLongitude = result.longitude; hasDestination = true; instruction.setText("Found via "+result.source+" • Calculating route…");requestRoute(); });
             } catch (Exception error) { main.post(() -> showError(error.getMessage())); }
-            finally { if (connection != null) connection.disconnect(); }
         });
     }
     private void requestRoute() {
