@@ -1,0 +1,7 @@
+Scooter Speedometer v8 signing-key backup
+
+Keep V8_SIGNING_PASSWORD in a password manager.
+Restore command:
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in v8-release-key.p12.enc -out v8-release-key.p12
+
+Alias: scooter-v8
