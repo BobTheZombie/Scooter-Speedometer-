@@ -1,6 +1,18 @@
 plugins { id 'com.android.application' }
 
 android {
+    def releaseStore = System.getenv("ANDROID_KEYSTORE_PATH")
+    signingConfigs {
+        release {
+            if (releaseStore) {
+                storeFile file(releaseStore)
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: "scooter-v8"
+                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     namespace 'com.stankhouse.scooterspeedometer'
     compileSdk 35
 
@@ -18,6 +30,7 @@ android {
             versionNameSuffix '-test'
         }
         release {
+            if (releaseStore) signingConfig signingConfigs.release
             minifyEnabled false
         }
     }
