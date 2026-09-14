@@ -166,25 +166,28 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         lastRouteRequest = System.currentTimeMillis(); double lon = currentLocation.getLongitude(), lat = currentLocation.getLatitude();
         instruction.setText("OpenNAV+ • Calculating scooter route…");
         network.execute(() -> {
-            HttpURLConnection connection = null;
             try {
-                boolean avoid=navPrefs.getBoolean("opennav_avoid_highways",true);String endpoint = String.format(Locale.US, "https://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true&alternatives=true%s", lon, lat, destinationLongitude, destinationLatitude,avoid?"&exclude=motorway,toll":"");
-                connection = open(new URL(endpoint));String payload=read(connection);JSONArray candidates=new JSONObject(payload).getJSONArray("routes");JSONObject route = candidates.getJSONObject(0);
+                boolean avoid=navPrefs.getBoolean("opennav_avoid_highways",true);String base = String.format(Locale.US, "https://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true&alternatives=true", lon, lat, destinationLongitude, destinationLatitude);
+                JSONObject response;boolean compatibilityFallback=false;
+                if(avoid){try{response=fetchRoute(base+"&exclude=motorway");}catch(Exception unsupported){response=fetchRoute(base);compatibilityFallback=true;}}else response=fetchRoute(base);
+                JSONArray candidates=response.getJSONArray("routes");if(candidates.length()==0)throw new Exception("No route was returned");JSONObject route=avoid?bestScooterCandidate(candidates):candidates.getJSONObject(0);
                 String geometry = route.getJSONObject("geometry").toString(); double distance = route.getDouble("distance"), duration = route.getDouble("duration");
                 List<RouteStep> parsed = parseSteps(route.getJSONArray("legs").getJSONObject(0).getJSONArray("steps"));
                 List<RoutePoint> routeShape=parseRouteShape(route.getJSONObject("geometry"));
                 markTrafficSignalTurns(parsed,routeShape);
-                cacheRoute(route);waitingForNetwork=false;main.removeCallbacks(routeRecovery);main.post(() -> applyRoute(geometry, parsed, routeShape, distance, duration));
-            } catch (Exception error) { main.post(() -> {if(restoreCachedRoute()){instruction.setText("OFFLINE GUIDANCE • Cached route");waitingForNetwork=true;main.removeCallbacks(routeRecovery);main.postDelayed(routeRecovery,15000L);}else{waitingForNetwork=true;instruction.setText("Waiting for signal • Route will recover automatically");main.removeCallbacks(routeRecovery);main.postDelayed(routeRecovery,15000L);}}); }
-            finally { if (connection != null) connection.disconnect(); }
+                cacheRoute(route);waitingForNetwork=false;main.removeCallbacks(routeRecovery);final boolean fallback=compatibilityFallback;main.post(() -> {applyRoute(geometry, parsed, routeShape, distance, duration);if(fallback)instruction.setText("Route ready • Low-highway alternative selected • Tap GO");});
+            } catch (Exception error) {String reason=error.getMessage()==null?"network unavailable":error.getMessage();main.post(() -> {if(restoreCachedRoute()){instruction.setText("OFFLINE GUIDANCE • Cached route • Reconnecting…");waitingForNetwork=true;main.removeCallbacks(routeRecovery);main.postDelayed(routeRecovery,15000L);}else{waitingForNetwork=true;instruction.setText("Route service unavailable • Retrying in 15 seconds");tripInfo.setText(reason);main.removeCallbacks(routeRecovery);main.postDelayed(routeRecovery,15000L);}}); }
         });
     }
+    private JSONObject fetchRoute(String endpoint)throws Exception{HttpURLConnection c=null;try{c=open(new URL(endpoint));int status=c.getResponseCode();if(status<200||status>=300)throw new Exception("routing HTTP "+status);JSONObject response=new JSONObject(read(c));String code=response.optString("code","");if(!"Ok".equalsIgnoreCase(code))throw new Exception(response.optString("message",code.isEmpty()?"route rejected":code));return response;}finally{if(c!=null)c.disconnect();}}
+    private JSONObject bestScooterCandidate(JSONArray routes)throws Exception{JSONObject best=routes.getJSONObject(0);double bestScore=scooterPenalty(best);for(int i=1;i<routes.length();i++){JSONObject candidate=routes.getJSONObject(i);double score=scooterPenalty(candidate);if(score<bestScore){best=candidate;bestScore=score;}}return best;}
+    private double scooterPenalty(JSONObject route)throws Exception{double score=route.optDouble("duration",0)/60d;JSONArray legs=route.getJSONArray("legs");for(int l=0;l<legs.length();l++){JSONArray routeSteps=legs.getJSONObject(l).getJSONArray("steps");for(int i=0;i<routeSteps.length();i++){JSONObject step=routeSteps.getJSONObject(i);String road=(step.optString("name","")+" "+step.optString("ref","")).toUpperCase(Locale.US);String maneuver=step.optJSONObject("maneuver")==null?"":step.optJSONObject("maneuver").optString("type","");if(road.matches(".*(^|[^A-Z])I[- ]?\\d+.*")||road.contains("INTERSTATE"))score+=10000;if(maneuver.contains("ramp"))score+=600;}}return score;}
     private void cacheRoute(JSONObject route){try{navPrefs.edit().putString("opennav_cached_route",route.toString()).putString("opennav_cached_destination",destinationLabel==null?"":destinationLabel).putLong("opennav_cached_at",System.currentTimeMillis()).apply();}catch(Exception ignored){}}
     private boolean restoreCachedRoute(){try{String raw=navPrefs.getString("opennav_cached_route","");String saved=navPrefs.getString("opennav_cached_destination","");if(raw.isEmpty()||destinationLabel==null||!saved.equalsIgnoreCase(destinationLabel)||System.currentTimeMillis()-navPrefs.getLong("opennav_cached_at",0)>7L*24L*60L*60L*1000L)return false;JSONObject route=new JSONObject(raw);String geometry=route.getJSONObject("geometry").toString();List<RouteStep> parsed=parseSteps(route.getJSONArray("legs").getJSONObject(0).getJSONArray("steps"));List<RoutePoint> shape=parseRouteShape(route.getJSONObject("geometry"));applyRoute(geometry,parsed,shape,route.getDouble("distance"),route.getDouble("duration"));return true;}catch(Exception ignored){return false;}}
     private HttpURLConnection open(URL url) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setConnectTimeout(10000); connection.setReadTimeout(12000);
-        connection.setRequestProperty("User-Agent", "Scooter-Speedometer/1.8 (github.com/BobTheZombie/Scooter-Speedometer-)");
+        connection.setConnectTimeout(8000); connection.setReadTimeout(10000);
+        connection.setRequestProperty("User-Agent", "Scooter-Speedometer/7.9.1 (github.com/BobTheZombie/Scooter-Speedometer-)");
         return connection;
     }
     private List<RouteStep> parseSteps(JSONArray json) throws Exception {
