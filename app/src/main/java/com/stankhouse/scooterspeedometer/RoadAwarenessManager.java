@@ -5,7 +5,6 @@ import android.content.SharedPreferences;
 import android.location.Location;
 import android.os.Handler;
 import android.os.Looper;
-import android.speech.tts.TextToSpeech;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -20,7 +19,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** Key-free OSM speed-limit lookup plus private, on-device hazard markers. */
-public class RoadAwarenessManager implements TextToSpeech.OnInitListener {
+public class RoadAwarenessManager {
     public interface Callback { void onRoadDataChanged(); void onHazard(String message); }
     public static final String[] HAZARD_TYPES = {"Pothole", "Loose gravel", "Flooding", "Police", "Construction", "Dangerous intersection"};
     private static final long LIMIT_REFRESH_MS = 30000L;
@@ -29,8 +28,8 @@ public class RoadAwarenessManager implements TextToSpeech.OnInitListener {
     private final Callback callback;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final TextToSpeech speech;
-    private boolean speechReady, fetching;
+    private final CopilotAlertQueue alerts;
+    private boolean fetching;
     private long lastFetch, lastSpeedSpeech;
     private Location lastLookup;
     private double limitMph = -1;
@@ -40,15 +39,14 @@ public class RoadAwarenessManager implements TextToSpeech.OnInitListener {
         this.context = context.getApplicationContext(); this.callback = callback;
         prefs = this.context.getSharedPreferences("road_awareness", Context.MODE_PRIVATE);
         limitMph = prefs.getFloat("limit_mph", -1); roadName = prefs.getString("road_name", "");
-        speech = new TextToSpeech(this.context, this);
+        alerts = CopilotAlertQueue.get(this.context);
     }
-    @Override public void onInit(int status) { speechReady = status == TextToSpeech.SUCCESS; if (speechReady) { speech.setLanguage(Locale.US); VoiceSettings.apply(context,speech); } }
     public double limitMph() { return limitMph; }
     public String roadName() { return roadName; }
     public int thresholdMph() { return prefs.getInt("threshold", 5); }
     public void setThresholdMph(int value) { prefs.edit().putInt("threshold", value).apply(); callback.onRoadDataChanged(); }
     public boolean voiceEnabled() { return prefs.getBoolean("voice", true); }
-    public void setVoiceEnabled(boolean value) { prefs.edit().putBoolean("voice", value).apply(); if (!value) speech.stop(); }
+    public void setVoiceEnabled(boolean value) { prefs.edit().putBoolean("voice", value).apply(); }
     public boolean hazardsEnabled() { return prefs.getBoolean("hazards_enabled", true); }
     public void setHazardsEnabled(boolean value) { prefs.edit().putBoolean("hazards_enabled", value).apply(); }
     public int hazardCount() { return hazards().length(); }
@@ -148,6 +146,6 @@ public class RoadAwarenessManager implements TextToSpeech.OnInitListener {
     private double distanceMeters(double lat1, double lon1, double lat2, double lon2) {
         float[] result = new float[1]; Location.distanceBetween(lat1, lon1, lat2, lon2, result); return result[0];
     }
-    private void speak(String message, String id) { if (speechReady && voiceEnabled()) speech.speak(message, TextToSpeech.QUEUE_ADD, null, id); }
-    public void shutdown() { executor.shutdownNow(); speech.stop(); speech.shutdown(); }
+    private void speak(String message, String id) { if (voiceEnabled()) alerts.enqueue(id.startsWith("hazard")?CopilotAlertQueue.HAZARD:CopilotAlertQueue.SPEED,id,message,id.startsWith("hazard")?10*60*1000L:45000L); }
+    public void shutdown() { executor.shutdownNow(); }
 }

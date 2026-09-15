@@ -9,7 +9,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
-import android.speech.tts.TextToSpeech;
 import android.text.TextUtils;
 
 /** Authorizes media access and mirrors DoorDash driver notifications locally for Dasher Mode. */
@@ -18,8 +17,7 @@ public class MediaAccessService extends NotificationListenerService {
     public static final String ACTION_HUD_UPDATE = "com.stankhouse.scooterspeedometer.HUD_UPDATE";
     public static final String ACTION_MONITORING_CHANGED = "com.stankhouse.scooterspeedometer.MONITORING_CHANGED";
     public static final String ACTION_APP_VISIBILITY_CHANGED = "com.stankhouse.scooterspeedometer.APP_VISIBILITY_CHANGED";
-    private TextToSpeech speech;
-    private boolean speechReady;
+    private CopilotAlertQueue alerts;
     private final BroadcastReceiver settingsReceiver=new BroadcastReceiver(){@Override public void onReceive(Context context,Intent intent){if(processingAllowed()){createSpeech();updateHud(null,false);}else clearPrivateState();}};
 
     @Override public void onCreate() {
@@ -32,12 +30,8 @@ public class MediaAccessService extends NotificationListenerService {
     }
 
     private void createSpeech(){
-        if(speech!=null)return;
-        speech = new TextToSpeech(this, status -> {
-            speechReady = status == TextToSpeech.SUCCESS;
-            if (speechReady) speech.setLanguage(java.util.Locale.US);
-            if(speechReady) VoiceSettings.apply(this,speech);
-        });
+        if(alerts!=null)return;
+        alerts = CopilotAlertQueue.get(this);
     }
 
     @Override public void onNotificationPosted(StatusBarNotification sbn) {
@@ -56,12 +50,12 @@ public class MediaAccessService extends NotificationListenerService {
                 .putString("dasher_title", title).putString("dasher_body", body)
                 .putString("dasher_sub", sub).putLong("dasher_time", System.currentTimeMillis()).apply();
         DeliveryCockpit.recordOffer(this, offerKey, title, body, sub,"notification");
-        if (newOffer && prefs.getBoolean("dasher_voice", true) && speechReady) {
+        if (newOffer && prefs.getBoolean("dasher_voice", true) && alerts != null) {
             float pay = prefs.getFloat("dasher_offer_pay", 0f), miles = prefs.getFloat("dasher_offer_miles", 0f);
             String restaurant = prefs.getString("dasher_restaurant", title);
             String announcement = "New DoorDash offer. " + (pay > 0 ? String.format(java.util.Locale.US, "%.2f dollars. ", pay) : "") +
                     (miles > 0 ? String.format(java.util.Locale.US, "%.1f miles. ", miles) : "") + restaurant;
-            speech.speak(announcement, TextToSpeech.QUEUE_FLUSH, null, "dasher-offer");
+            alerts.enqueue(CopilotAlertQueue.NAVIGATION,"dasher:"+offerKey,announcement,0,120000L);
         }
         sendBroadcast(new Intent(ACTION_DASHER_UPDATE).setPackage(getPackageName()));
     }
@@ -83,7 +77,7 @@ public class MediaAccessService extends NotificationListenerService {
         android.content.SharedPreferences prefs=getSharedPreferences("speedometer",MODE_PRIVATE);
         if(changed!=null&&posted&&!changed.isOngoing()&&!isGroupSummary(changed.getNotification())){
             Bundle extras=changed.getNotification().extras;String title=value(extras.getCharSequence(Notification.EXTRA_TITLE));String body=value(extras.getCharSequence(Notification.EXTRA_BIG_TEXT));if(TextUtils.isEmpty(body))body=value(extras.getCharSequence(Notification.EXTRA_TEXT));
-            boolean message=categoryEnabled("monitor_messages",true)&&isMessage(changed),call=categoryEnabled("monitor_calls",true)&&isCall(changed);if(message||call){prefs.edit().putString("hud_title",title).putString("hud_body",body).putString("hud_type",call?"call":"message").putLong("hud_time",System.currentTimeMillis()).apply();String last=prefs.getString("hud_last_spoken_key","");if(!changed.getKey().equals(last)&&speechReady&&((message&&prefs.getBoolean("hud_speak_messages",true))||(call&&prefs.getBoolean("hud_speak_calls",true)))){String announcement=call?"Incoming call from "+safe(title):"Message from "+safe(title)+". "+safe(body);speech.speak(announcement,TextToSpeech.QUEUE_ADD,null,"hud-"+changed.getId());prefs.edit().putString("hud_last_spoken_key",changed.getKey()).apply();}}
+            boolean message=categoryEnabled("monitor_messages",true)&&isMessage(changed),call=categoryEnabled("monitor_calls",true)&&isCall(changed);if(message||call){prefs.edit().putString("hud_title",title).putString("hud_body",body).putString("hud_type",call?"call":"message").putLong("hud_time",System.currentTimeMillis()).apply();String last=prefs.getString("hud_last_spoken_key","");if(!changed.getKey().equals(last)&&alerts!=null&&((message&&prefs.getBoolean("hud_speak_messages",true))||(call&&prefs.getBoolean("hud_speak_calls",true)))){String announcement=call?"Incoming call from "+safe(title):"Message from "+safe(title)+". "+safe(body);alerts.enqueue(CopilotAlertQueue.COMMUNICATION,"hud:"+changed.getKey(),announcement,0,60000L);prefs.edit().putString("hud_last_spoken_key",changed.getKey()).apply();}}
         }
         int messages=0,calls=0;try{StatusBarNotification[] active=getActiveNotifications();if(active!=null)for(StatusBarNotification item:active){if(isGroupSummary(item.getNotification()))continue;if(isMessage(item))messages++;else if(isCall(item))calls++;}}catch(Exception ignored){}
         if(!categoryEnabled("monitor_messages",true))messages=0;if(!categoryEnabled("monitor_calls",true))calls=0;
@@ -92,7 +86,7 @@ public class MediaAccessService extends NotificationListenerService {
     private boolean monitoringEnabled(){return getSharedPreferences("speedometer",MODE_PRIVATE).getBoolean("notification_monitoring",false);}
     private boolean processingAllowed(){android.content.SharedPreferences p=getSharedPreferences("speedometer",MODE_PRIVATE);return monitoringEnabled()&&p.getBoolean("app_visible",false);}
     private boolean categoryEnabled(String key,boolean fallback){return getSharedPreferences("speedometer",MODE_PRIVATE).getBoolean(key,fallback);}
-    private void clearPrivateState(){getSharedPreferences("speedometer",MODE_PRIVATE).edit().remove("hud_title").remove("hud_body").remove("hud_type").remove("hud_time").remove("hud_last_spoken_key").putInt("hud_message_count",0).putInt("hud_call_count",0).remove("dasher_key").remove("dasher_title").remove("dasher_body").remove("dasher_sub").apply();sendBroadcast(new Intent(ACTION_HUD_UPDATE).setPackage(getPackageName()));sendBroadcast(new Intent(ACTION_DASHER_UPDATE).setPackage(getPackageName()));if(speech!=null)speech.stop();}
+    private void clearPrivateState(){getSharedPreferences("speedometer",MODE_PRIVATE).edit().remove("hud_title").remove("hud_body").remove("hud_type").remove("hud_time").remove("hud_last_spoken_key").putInt("hud_message_count",0).putInt("hud_call_count",0).remove("dasher_key").remove("dasher_title").remove("dasher_body").remove("dasher_sub").apply();sendBroadcast(new Intent(ACTION_HUD_UPDATE).setPackage(getPackageName()));sendBroadcast(new Intent(ACTION_DASHER_UPDATE).setPackage(getPackageName()));}
     private String safe(String value){return TextUtils.isEmpty(value)?"unknown":value.replaceAll("https?://\\S+","a link");}
     private boolean isGroupSummary(Notification notification){return notification!=null&&(notification.flags&Notification.FLAG_GROUP_SUMMARY)!=0;}
     private boolean isMessage(StatusBarNotification sbn){if(sbn==null)return false;Notification n=sbn.getNotification();String category=n.category;String pkg=sbn.getPackageName().toLowerCase(java.util.Locale.US);return Notification.CATEGORY_MESSAGE.equals(category)||n.extras.getParcelable(Notification.EXTRA_MESSAGING_PERSON)!=null||pkg.contains("messaging")||pkg.contains("whatsapp")||pkg.contains("signal");}
@@ -107,7 +101,6 @@ public class MediaAccessService extends NotificationListenerService {
 
     @Override public void onDestroy() {
         try{unregisterReceiver(settingsReceiver);}catch(Exception ignored){}
-        if (speech != null) speech.shutdown();
         super.onDestroy();
     }
 }

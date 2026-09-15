@@ -11,7 +11,6 @@ import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.speech.tts.TextToSpeech;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowManager;
@@ -41,7 +40,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** Key-free in-app OSM map and turn guidance with no commercial map SDK. */
-public class BuiltInNavigationActivity extends Activity implements LocationListener, TextToSpeech.OnInitListener {
+public class BuiltInNavigationActivity extends Activity implements LocationListener {
     private final ExecutorService network = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<RouteStep> steps = new ArrayList<>();
@@ -59,8 +58,10 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private Location filteredLocation;
     private long lastMapUpdate;
     private String routeSummary="";
-    private TextToSpeech speech;
-    private boolean speechReady;
+    private CopilotAlertQueue alerts;
+    private RouteWeatherAdvisor routeWeather;
+    private long routeWeatherLastCheck;
+    private double routeDurationSeconds;
     private int stepIndex, lastSpokenStep = -1;
     private int spokenStage;
     private long offRouteSince;
@@ -92,7 +93,8 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         policeProvider = new PoliceSightingProvider();
         tileCache = new MapTileCache(this);
         offlineRegions=new OfflineRegionManager(this);
-        speech = new TextToSpeech(this, this);
+        alerts = CopilotAlertQueue.get(this);
+        routeWeather = new RouteWeatherAdvisor(this);
         FrameLayout root = new FrameLayout(this);
         map = new WebView(this);
         map.setLayerType(View.LAYER_TYPE_HARDWARE, null);
@@ -218,25 +220,27 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private List<RoutePoint> parseRouteShape(JSONObject geometry)throws Exception{List<RoutePoint> result=new ArrayList<>();JSONArray coordinates=geometry.getJSONArray("coordinates");for(int i=0;i<coordinates.length();i++){JSONArray p=coordinates.getJSONArray(i);result.add(new RoutePoint(p.getDouble(1),p.getDouble(0)));}return result;}
     private void applyRoute(String geometry, List<RouteStep> parsed, List<RoutePoint> shape, double distance, double duration) {
         steps.clear(); steps.addAll(parsed); stepIndex = Math.min(1, Math.max(0, steps.size() - 1)); lastSpokenStep = -1;spokenStage=0;offRouteSince=0;
-        routePoints.clear();routePoints.addAll(shape);
+        routePoints.clear();routePoints.addAll(shape);routeDurationSeconds=duration;
         if (mapReady) map.evaluateJavascript("setRoute(" + geometry + ")", null);
         routeSummary=String.format(Locale.US, "%.1f mi  •  %d min  •  ETA %s  •  OpenNAV+", distance / 1609.344, Math.round(duration / 60),new java.text.SimpleDateFormat("h:mm a",Locale.US).format(new java.util.Date(System.currentTimeMillis()+(long)(duration*1000))));tripInfo.setText(routeSummary);
+        if(routeWeather!=null){routeWeatherLastCheck=System.currentTimeMillis();routeWeather.check(routeLocations(),duration,summary->{if(!summary.isEmpty())tripInfo.setText(routeSummary+"\n⚠ "+summary);});}
         if(guidanceActive){goButton.setVisibility(View.GONE);if(!steps.isEmpty())instruction.setText(steps.get(stepIndex).instruction);if(mapReady)map.evaluateJavascript("startGuidance()",null);}else{goButton.setVisibility(View.VISIBLE);instruction.setText("Route ready • Review the route, then tap GO");}
     }
-    private void startGuidance(){if(steps.isEmpty())return;guidanceActive=true;goButton.setVisibility(View.GONE);stepIndex=Math.min(1,Math.max(0,steps.size()-1));lastSpokenStep=-1;spokenStage=0;instruction.setText(steps.get(stepIndex).instruction);if(mapReady)map.evaluateJavascript("startGuidance()",null);if(speechReady)speech.speak("Navigation started",TextToSpeech.QUEUE_ADD,null,"navigation_started");if(currentLocation!=null)updateGuidance(currentLocation);}
+    private List<Location> routeLocations(){List<Location> result=new ArrayList<>();for(RoutePoint point:routePoints){Location location=new Location("route");location.setLatitude(point.lat);location.setLongitude(point.lon);result.add(location);}return result;}
+    private void startGuidance(){if(steps.isEmpty())return;guidanceActive=true;goButton.setVisibility(View.GONE);stepIndex=Math.min(1,Math.max(0,steps.size()-1));lastSpokenStep=-1;spokenStage=0;instruction.setText(steps.get(stepIndex).instruction);if(mapReady)map.evaluateJavascript("startGuidance()",null);alerts.enqueue(CopilotAlertQueue.NAVIGATION,"navigation-started","Navigation started",0);if(currentLocation!=null)updateGuidance(currentLocation);}
     private SnappedPoint snapToRoute(Location location){if(routePoints.size()<2)return null;double best=Double.MAX_VALUE,bestLat=location.getLatitude(),bestLon=location.getLongitude();float bestBearing=location.hasBearing()?location.getBearing():0;for(int i=1;i<routePoints.size();i++){RoutePoint a=routePoints.get(i-1),b=routePoints.get(i);double scale=Math.cos(Math.toRadians(location.getLatitude()));double ax=(a.lon-location.getLongitude())*111320d*scale,ay=(a.lat-location.getLatitude())*111320d,bx=(b.lon-location.getLongitude())*111320d*scale,by=(b.lat-location.getLatitude())*111320d;double vx=bx-ax,vy=by-ay,den=vx*vx+vy*vy,t=den==0?0:Math.max(0,Math.min(1,-(ax*vx+ay*vy)/den));double x=ax+t*vx,y=ay+t*vy,d=Math.hypot(x,y);if(d<best){best=d;bestLat=location.getLatitude()+y/111320d;bestLon=location.getLongitude()+x/(111320d*scale);float[] br=new float[2];Location.distanceBetween(a.lat,a.lon,b.lat,b.lon,br);bestBearing=br[1];}}return best<=Math.max(30d,location.getAccuracy()*1.25d)?new SnappedPoint(bestLat,bestLon,bestBearing):null;}
     private void applyCameraData(String body){cameraPoints.clear();try{JSONArray list=new JSONArray(body);for(int i=0;i<list.length();i++){JSONObject p=list.getJSONObject(i);cameraPoints.add(new CameraPoint(p.getDouble("latitude"),p.getDouble("longitude")));}if(currentLocation!=null)checkCameraWarnings(currentLocation);}catch(Exception ignored){}}
     private void checkCameraWarnings(Location location){
-        if(!speechReady||cameraPoints.isEmpty()||location.getSpeed()<1.5f)return;long now=System.currentTimeMillis();if(now-lastCameraWarning<12000L)return;
+        if(cameraPoints.isEmpty()||location.getSpeed()<1.5f)return;long now=System.currentTimeMillis();if(now-lastCameraWarning<12000L)return;
         CameraPoint best=null;float bestDistance=Float.MAX_VALUE;float heading=location.hasBearing()?location.getBearing():routeHeading(location);
         for(CameraPoint camera:cameraPoints){float[] d=new float[2];Location.distanceBetween(location.getLatitude(),location.getLongitude(),camera.lat,camera.lon,d);if(d[0]>152.4f||d[0]>=bestDistance)continue;
             float delta=Math.abs(((d[1]-heading+540f)%360f)-180f);if(delta>75f)continue;if(!routePoints.isEmpty()&&distanceToRouteMeters(camera)>65d)continue;
             String key=camera.key();Long warned=cameraWarningTimes.get(key);if(warned!=null&&now-warned<20L*60L*1000L)continue;best=camera;bestDistance=d[0];}
         if(best==null)return;String key=best.key();cameraWarningTimes.put(key,now);lastCameraWarning=now;int feet=Math.max(100,Math.round((bestDistance*3.28084f)/50f)*50);String warning="Reported plate reader ahead in "+feet+" feet";
-        speech.speak(warning,TextToSpeech.QUEUE_ADD,null,"alpr_"+key);if(mapReady)map.evaluateJavascript(String.format(Locale.US,"highlightFlock(%.7f,%.7f)",best.lat,best.lon),null);
+        alerts.enqueue(CopilotAlertQueue.HAZARD,"alpr:"+key,warning,20L*60L*1000L);if(mapReady)map.evaluateJavascript(String.format(Locale.US,"highlightFlock(%.7f,%.7f)",best.lat,best.lon),null);
     }
     private void applyPoliceData(String body){policePoints.clear();try{JSONArray list=new JSONArray(body);for(int i=0;i<list.length();i++){JSONObject p=list.getJSONObject(i);policePoints.add(new PolicePoint(p.optLong("id"),p.getDouble("latitude"),p.getDouble("longitude")));}if(currentLocation!=null)checkPoliceWarnings(currentLocation);}catch(Exception ignored){}}
-    private void checkPoliceWarnings(Location location){if(!speechReady||policePoints.isEmpty()||location.getSpeed()<1.5f)return;long now=System.currentTimeMillis();if(now-lastPoliceWarning<30000L)return;float heading=location.hasBearing()?location.getBearing():routeHeading(location);PolicePoint best=null;float bestDistance=Float.MAX_VALUE;for(PolicePoint point:policePoints){float[] d=new float[2];Location.distanceBetween(location.getLatitude(),location.getLongitude(),point.lat,point.lon,d);if(d[0]>1200f||d[0]>=bestDistance)continue;float delta=Math.abs(((d[1]-heading+540f)%360f)-180f);if(delta>65f)continue;if(!routePoints.isEmpty()&&distanceToRouteMeters(new CameraPoint(point.lat,point.lon))>100d)continue;Long warned=policeWarningTimes.get(point.id);if(warned!=null&&now-warned<30L*60L*1000L)continue;best=point;bestDistance=d[0];}if(best==null)return;policeWarningTimes.put(best.id,now);lastPoliceWarning=now;speech.speak("Police vehicle ahead",TextToSpeech.QUEUE_ADD,null,"police_"+best.id);if(mapReady)map.evaluateJavascript(String.format(Locale.US,"highlightPolice(%.7f,%.7f)",best.lat,best.lon),null);}
+    private void checkPoliceWarnings(Location location){if(policePoints.isEmpty()||location.getSpeed()<1.5f)return;long now=System.currentTimeMillis();if(now-lastPoliceWarning<30000L)return;float heading=location.hasBearing()?location.getBearing():routeHeading(location);PolicePoint best=null;float bestDistance=Float.MAX_VALUE;for(PolicePoint point:policePoints){float[] d=new float[2];Location.distanceBetween(location.getLatitude(),location.getLongitude(),point.lat,point.lon,d);if(d[0]>1200f||d[0]>=bestDistance)continue;float delta=Math.abs(((d[1]-heading+540f)%360f)-180f);if(delta>65f)continue;if(!routePoints.isEmpty()&&distanceToRouteMeters(new CameraPoint(point.lat,point.lon))>100d)continue;Long warned=policeWarningTimes.get(point.id);if(warned!=null&&now-warned<30L*60L*1000L)continue;best=point;bestDistance=d[0];}if(best==null)return;policeWarningTimes.put(best.id,now);lastPoliceWarning=now;alerts.enqueue(CopilotAlertQueue.HAZARD,"police:"+best.id,"Police vehicle ahead",30L*60L*1000L);if(mapReady)map.evaluateJavascript(String.format(Locale.US,"highlightPolice(%.7f,%.7f)",best.lat,best.lon),null);}
     private float routeHeading(Location location){if(stepIndex<steps.size()){RouteStep s=steps.get(stepIndex);float[] d=new float[2];Location.distanceBetween(location.getLatitude(),location.getLongitude(),s.latitude,s.longitude,d);return d[1];}return 0f;}
     private double distanceToRouteMeters(CameraPoint c){double best=Double.MAX_VALUE;for(int i=1;i<routePoints.size();i++){best=Math.min(best,segmentDistanceMeters(c,routePoints.get(i-1),routePoints.get(i)));if(best<=20d)return best;}return best;}
     private double segmentDistanceMeters(CameraPoint p,RoutePoint a,RoutePoint b){double scale=Math.cos(Math.toRadians(p.lat));double ax=(a.lon-p.lon)*111320d*scale,ay=(a.lat-p.lat)*111320d,bx=(b.lon-p.lon)*111320d*scale,by=(b.lat-p.lat)*111320d;double vx=bx-ax,vy=by-ay,den=vx*vx+vy*vy,t=den==0?0:Math.max(0,Math.min(1,-(ax*vx+ay*vy)/den));return Math.hypot(ax+t*vx,ay+t*vy);}
@@ -247,9 +251,10 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         String wording=step.guidance();float feet=metres*3.28084f;
         instruction.setText(formatVisualDistance(feet)+"  •  "+step.icon()+"  "+wording);
         int stage=metres<=45?5:metres<=155?4:metres<=410?3:metres<=805?2:metres<=1610?1:0;
-        if(speechReady&&stage>spokenStage){speech.speak(spokenLead(stage)+wording,TextToSpeech.QUEUE_ADD,null,"turn_"+stepIndex+"_"+stage);spokenStage=stage;lastSpokenStep=stepIndex;}
+        if(stage>spokenStage){alerts.enqueue(CopilotAlertQueue.NAVIGATION,"turn:"+stepIndex+":"+stage,spokenLead(stage)+wording,0,90000L);spokenStage=stage;lastSpokenStep=stepIndex;}
         double routeDistance=distanceToRouteMeters(new RoutePoint(location.getLatitude(),location.getLongitude()));long now=System.currentTimeMillis();
-        if(routeDistance>85){if(offRouteSince==0)offRouteSince=now;else if(now-offRouteSince>7000&&now-lastRouteRequest>15000){instruction.setText("Rerouting…");speech.speak("You are off route. Recalculating.",TextToSpeech.QUEUE_ADD,null,"reroute");requestRoute();offRouteSince=0;}}else offRouteSince=0;
+        if(routeDistance>85){if(offRouteSince==0)offRouteSince=now;else if(now-offRouteSince>7000&&now-lastRouteRequest>15000){instruction.setText("Rerouting…");alerts.enqueue(CopilotAlertQueue.NAVIGATION,"reroute:"+(now/30000L),"You are off route. Recalculating.",30000L);requestRoute();offRouteSince=0;}}else offRouteSince=0;
+        if(routeWeather!=null&&now-routeWeatherLastCheck>10L*60L*1000L){routeWeatherLastCheck=now;routeWeather.check(routeLocations(),routeDurationSeconds,summary->{if(!summary.isEmpty())tripInfo.setText(routeSummary+"\n⚠ "+summary);});}
     }
     private String formatVisualDistance(float feet){if(feet>=1000f){float miles=feet/5280f;return miles>=10f?String.format(Locale.US,"%.0f mi",miles):String.format(Locale.US,"%.1f mi",miles);}return Math.max(50,Math.round(feet/50f)*50)+" ft";}
     private String spokenLead(int stage){if(stage>=5)return "Now, ";if(stage==4)return "In 500 feet, ";if(stage==3)return "In a quarter mile, ";if(stage==2)return "In half a mile, ";return "In one mile, ";}
@@ -258,9 +263,8 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private void markTrafficSignalTurns(List<RouteStep> parsed,List<RoutePoint> shape){if(shape.isEmpty()||parsed.isEmpty())return;double south=90,north=-90,west=180,east=-180;for(RoutePoint p:shape){south=Math.min(south,p.lat);north=Math.max(north,p.lat);west=Math.min(west,p.lon);east=Math.max(east,p.lon);}float[] span=new float[1];Location.distanceBetween(south,west,north,east,span);if(span[0]>65000)return;HttpURLConnection c=null;try{String query=String.format(Locale.US,"[out:json][timeout:12];node[highway=traffic_signals](%.6f,%.6f,%.6f,%.6f);out body;",south-.002,west-.002,north+.002,east+.002);c=open(new URL("https://overpass-api.de/api/interpreter?data="+android.net.Uri.encode(query)));JSONArray nodes=new JSONObject(read(c)).getJSONArray("elements");for(RouteStep step:parsed){if("depart".equals(step.type)||"arrive".equals(step.type)||"continue".equals(step.type))continue;for(int i=0;i<nodes.length();i++){JSONObject n=nodes.getJSONObject(i);float[] d=new float[1];Location.distanceBetween(step.latitude,step.longitude,n.getDouble("lat"),n.getDouble("lon"),d);if(d[0]<=38){step.atTrafficSignal=true;break;}}}}catch(Exception ignored){}finally{if(c!=null)c.disconnect();}}
     private String read(HttpURLConnection connection) throws Exception { BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream())); StringBuilder out = new StringBuilder(); String line; while ((line = reader.readLine()) != null) out.append(line); reader.close(); return out.toString(); }
     private void showError(String message) { instruction.setText(message); new AlertDialog.Builder(this).setTitle("Navigation").setMessage(message).setPositiveButton("Close", (d,w) -> finish()).show(); }
-    @Override public void onInit(int status) { speechReady = status == TextToSpeech.SUCCESS; if (speechReady) { speech.setLanguage(Locale.US); VoiceSettings.apply(this,speech); } }
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) Fullscreen.apply(this); }
-    @Override protected void onDestroy() { main.removeCallbacks(routeRecovery);try { locationManager.removeUpdates(this); } catch (Exception ignored) {} network.shutdownNow();if(flockCameras!=null)flockCameras.shutdown();if(policeProvider!=null)policeProvider.shutdown();if(offlineRegions!=null)offlineRegions.shutdown(); speech.stop(); speech.shutdown(); map.destroy(); super.onDestroy(); }
+    @Override protected void onDestroy() { main.removeCallbacks(routeRecovery);try { locationManager.removeUpdates(this); } catch (Exception ignored) {} network.shutdownNow();if(flockCameras!=null)flockCameras.shutdown();if(policeProvider!=null)policeProvider.shutdown();if(offlineRegions!=null)offlineRegions.shutdown();if(routeWeather!=null)routeWeather.shutdown();map.destroy();super.onDestroy(); }
     @Override public void onProviderEnabled(String provider) { }
     @Override public void onProviderDisabled(String provider) { }
     @Override public void onStatusChanged(String provider, int status, Bundle extras) { }

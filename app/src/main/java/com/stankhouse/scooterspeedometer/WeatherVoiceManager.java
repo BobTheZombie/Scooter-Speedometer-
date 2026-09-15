@@ -23,6 +23,7 @@ public class WeatherVoiceManager implements TextToSpeech.OnInitListener {
     private final SharedPreferences prefs;
     private final TextToSpeech speech;
     private final AudioManager audioManager;
+    private final CopilotAlertQueue alertQueue;
     private AudioFocusRequest focusRequest;
     private final AudioManager.OnAudioFocusChangeListener focusListener = focusChange -> { };
     private boolean ready;
@@ -30,6 +31,7 @@ public class WeatherVoiceManager implements TextToSpeech.OnInitListener {
     public WeatherVoiceManager(Context context) {
         prefs = context.getSharedPreferences("weather_voice", Context.MODE_PRIVATE);
         audioManager = (AudioManager) context.getApplicationContext().getSystemService(Context.AUDIO_SERVICE);
+        alertQueue = CopilotAlertQueue.get(context);
         speech = new TextToSpeech(context.getApplicationContext(), this);
         speech.setOnUtteranceProgressListener(new UtteranceProgressListener() {
             @Override public void onStart(String utteranceId) { }
@@ -92,14 +94,16 @@ public class WeatherVoiceManager implements TextToSpeech.OnInitListener {
         long now = System.currentTimeMillis();
         if (key.equals(prefs.getString("last_forecast_key", "")) &&
                 now - prefs.getLong("last_forecast_spoken", 0) < FORECAST_COOLDOWN) return;
-        speak(message, "weather_forecast");
+        alertQueue.enqueue(CopilotAlertQueue.WEATHER, key, message, FORECAST_COOLDOWN);
         prefs.edit().putString("last_forecast_key", key).putLong("last_forecast_spoken", now).apply();
     }
 
     public void announceAlert(WeatherRepository.AlertData alert) {
         if (!ready || !enabled() || alert == null || !alert.active() || alert.severityRank() < 2) return;
         if (alert.id.equals(prefs.getString("last_alert_id", ""))) return;
-        speak("Weather alert. " + alert.event + ". " + alert.headline, "weather_alert");
+        alertQueue.enqueue(alert.severityRank() >= 3 ? CopilotAlertQueue.CRITICAL : CopilotAlertQueue.HAZARD,
+                "weather-alert:" + alert.id, "Weather alert. " + alert.event + ". " + alert.headline,
+                24 * 60 * 60 * 1000L);
         prefs.edit().putString("last_alert_id", alert.id).apply();
     }
 
