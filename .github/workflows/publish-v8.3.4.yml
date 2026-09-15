@@ -1,0 +1,86 @@
+name: Publish v8.3.4 release
+
+on:
+  push:
+    branches: [v8-rider-copilot]
+    paths:
+      - .github/workflows/publish-v8.3.4.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+      KEY_ALIAS: scooter-v8
+      KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v8-rider-copilot
+          fetch-depth: 0
+
+      - name: Validate permanent signing configuration
+        shell: bash
+        run: |
+          test -n "$KEY_PASSWORD" || { echo "::error::V8_SIGNING_PASSWORD is missing"; exit 1; }
+          test -f signing/v8-release-key.p12.enc || { echo "::error::Encrypted v8 signing key is missing"; exit 1; }
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000             -in signing/v8-release-key.p12.enc             -out "$KEYSTORE_PATH"             -pass env:KEY_PASSWORD
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build signed v8.3 APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+          ANDROID_KEY_ALIAS: scooter-v8
+          ANDROID_KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify and stage release
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk             dist/Scooter-Speedometer-v8.3.4.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify             --verbose --print-certs dist/Scooter-Speedometer-v8.3.4.apk
+          sha256sum dist/Scooter-Speedometer-v8.3.4.apk             > dist/Scooter-Speedometer-v8.3.4.apk.sha256
+
+      - name: Publish GitHub release
+        shell: bash
+        run: |
+          gh release create v8.3.4             dist/Scooter-Speedometer-v8.3.4.apk             dist/Scooter-Speedometer-v8.3.4.apk.sha256             --target v8-rider-copilot             --title "Scooter Speedometer v8.3"             --notes-file - <<'NOTES'
+          Rider Copilot v8.3 adaptive intelligence release
+
+          - Adaptive Copilot using speed, trip, GPS, battery and weather context
+          - Sustained GPS-loss detection plus spoken recovery confirmation
+          - Speed-aware wind, rain, snow and thunderstorm safety advice
+          - Contextual battery and long-ride break reminders
+          - Google and Facebook RiderLink sign-in through secure PKCE OAuth
+          - Official vector provider logos aligned beside their sign-in buttons
+          - Dark Material input surfaces with corrected contrast
+          - Responsive RiderLink map header with unclipped title and subtitle
+          - Single-line LIVE control and weighted bottom action layout
+          - Consistent vertical spacing throughout RiderLink sign-in
+          - OAuth callback accepts PKCE codes and sessions in query or fragment form
+          - Supabase provider errors are shown instead of a generic session failure
+          - Email/password RiderLink sign-in remains available
+          - Signed with the permanent v8 release identity
+
+          Android 6.0+ • versionCode 87
+          NOTES
+
+      - name: Remove plaintext signing key
+        if: always()
+        shell: bash
+        run: rm -f "$KEYSTORE_PATH"
