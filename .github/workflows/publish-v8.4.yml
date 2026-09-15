@@ -4,7 +4,7 @@ on:
   push:
     branches: [v8-rider-copilot]
     paths:
-      - .github/workflows/publish-v8.4.0.yml
+      - .github/workflows/publish-v8.4.yml
 
 permissions:
   contents: write
