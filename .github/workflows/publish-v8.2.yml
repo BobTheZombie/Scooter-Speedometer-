@@ -1,0 +1,80 @@
+name: Publish v8.1 release
+
+on:
+  push:
+    branches: [v8-rider-copilot]
+    paths:
+      - .github/workflows/publish-v8.1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+      KEY_ALIAS: scooter-v8
+      KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v8-rider-copilot
+          fetch-depth: 0
+
+      - name: Validate permanent signing configuration
+        shell: bash
+        run: |
+          test -n "$KEY_PASSWORD" || { echo "::error::V8_SIGNING_PASSWORD is missing"; exit 1; }
+          test -f signing/v8-release-key.p12.enc || { echo "::error::Encrypted v8 signing key is missing"; exit 1; }
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000             -in signing/v8-release-key.p12.enc             -out "$KEYSTORE_PATH"             -pass env:KEY_PASSWORD
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build signed v8.1 APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+          ANDROID_KEY_ALIAS: scooter-v8
+          ANDROID_KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Verify and stage release
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk             dist/Scooter-Speedometer-v8.1.0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify             --verbose --print-certs dist/Scooter-Speedometer-v8.1.0.apk
+          sha256sum dist/Scooter-Speedometer-v8.1.0.apk             > dist/Scooter-Speedometer-v8.1.0.apk.sha256
+
+      - name: Publish GitHub release
+        shell: bash
+        run: |
+          gh release create v8.1.0             dist/Scooter-Speedometer-v8.1.0.apk             dist/Scooter-Speedometer-v8.1.0.apk.sha256             --target v8-rider-copilot             --title "Scooter Speedometer v8.1"             --notes-file - <<'NOTES'
+          Rider Copilot v8.2 intelligence release
+
+          - Completely redesigned Settings control center
+          - Completely redesigned Rider account and community menu
+          - Modern layered surfaces, dedicated icons and clearer visual hierarchy
+          - Live GPS and Rider Copilot status strip
+          - Improved labels and descriptions for riding-friendly scanning
+          - Rider Copilot briefings, GPS, battery and strong-wind awareness
+          - Foreground-only voice processing with automatic music ducking
+          - Signed with the permanent v8 release identity
+
+          Android 6.0+ • versionCode 82
+          NOTES
+
+      - name: Remove plaintext signing key
+        if: always()
+        shell: bash
+        run: rm -f "$KEYSTORE_PATH"
