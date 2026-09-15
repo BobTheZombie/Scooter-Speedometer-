@@ -88,9 +88,9 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         root.setPadding(dp(28), dp(24), dp(28), dp(24)); root.setBackground(UiKit.screenBackground(this));
         root.addView(UiKit.header(this,"◉","RiderLink","SOCIAL • GROUP RIDES • SOS"),new LinearLayout.LayoutParams(-1,dp(82)));
         EditText email = input("Email", false), password = input("Password (6+ characters)", true);
-        root.addView(email, new LinearLayout.LayoutParams(-1, dp(58))); root.addView(password, new LinearLayout.LayoutParams(-1, dp(58)));
+        LinearLayout.LayoutParams fieldLayout=new LinearLayout.LayoutParams(-1,dp(58));fieldLayout.setMargins(0,0,0,dp(8));root.addView(email,fieldLayout);LinearLayout.LayoutParams passwordLayout=new LinearLayout.LayoutParams(-1,dp(58));passwordLayout.setMargins(0,0,0,dp(8));root.addView(password,passwordLayout);
         Button signIn = button("SIGN IN", Color.rgb(0, 105, 125)); Button create = button("CREATE RIDER ACCOUNT", Color.rgb(24, 65, 76));
-        root.addView(signIn, new LinearLayout.LayoutParams(-1, dp(54))); root.addView(create, new LinearLayout.LayoutParams(-1, dp(54)));
+        LinearLayout.LayoutParams signInLayout=new LinearLayout.LayoutParams(-1,dp(54));signInLayout.setMargins(0,0,0,dp(8));root.addView(signIn,signInLayout);root.addView(create,new LinearLayout.LayoutParams(-1,dp(54)));
         TextView divider=title("OR CONTINUE WITH",11,Color.rgb(125,150,160));root.addView(divider,new LinearLayout.LayoutParams(-1,dp(38)));
         LinearLayout providers=new LinearLayout(this);providers.setGravity(Gravity.CENTER);Button google=button("GOOGLE",Color.rgb(33,66,78)),facebook=button("FACEBOOK",Color.rgb(38,78,145));google.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_google_g,0,0,0);facebook.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_facebook_f,0,0,0);google.setCompoundDrawablePadding(dp(9));facebook.setCompoundDrawablePadding(dp(9));LinearLayout.LayoutParams providerButton=new LinearLayout.LayoutParams(0,dp(54),1);providers.addView(google,providerButton);android.widget.Space providerGap=new android.widget.Space(this);providers.addView(providerGap,new LinearLayout.LayoutParams(dp(8),1));providers.addView(facebook,new LinearLayout.LayoutParams(0,dp(54),1));root.addView(providers,new LinearLayout.LayoutParams(-1,dp(62)));
         root.addView(title("Live location is always off until you enable it.", 12, Color.rgb(115, 145, 155)));
@@ -118,9 +118,9 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         LinearLayout root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setBackground(UiKit.screenBackground(this));
         root.setPadding(0, 0, 0, 0);
         LinearLayout header = new LinearLayout(this); header.setGravity(Gravity.CENTER_VERTICAL); header.setPadding(dp(10), dp(4), dp(10), dp(4));
-        header.addView(UiKit.header(this,"◉","RiderLink","LIVE RIDER NETWORK"),new LinearLayout.LayoutParams(0,dp(64),1));
-        Button socialButton = UiKit.iconButton(this,"♟","Social",UiKit.SURFACE_ACTIVE); header.addView(socialButton, new LinearLayout.LayoutParams(dp(100), dp(46)));
-        Button profileButton = UiKit.iconButton(this,"●","Me",UiKit.SURFACE_HIGH); header.addView(profileButton, new LinearLayout.LayoutParams(dp(78), dp(46))); root.addView(header);
+        header.addView(UiKit.header(this,"◉","RiderLink","RIDER NETWORK"),new LinearLayout.LayoutParams(0,dp(68),1));
+        Button socialButton = UiKit.iconButton(this,"♟","Social",UiKit.SURFACE_ACTIVE);socialButton.setTextSize(11);socialButton.setPadding(dp(5),0,dp(5),0);header.addView(socialButton,new LinearLayout.LayoutParams(dp(80),dp(44)));
+        Button profileButton = UiKit.iconButton(this,"●","Me",UiKit.SURFACE_HIGH);profileButton.setTextSize(11);profileButton.setPadding(dp(4),0,dp(4),0);LinearLayout.LayoutParams profileLayout=new LinearLayout.LayoutParams(dp(62),dp(44));profileLayout.setMargins(dp(6),0,0,0);header.addView(profileButton,profileLayout);root.addView(header);
         status = title("Location sharing OFF", 13, Color.rgb(255, 176, 40)); root.addView(status, new LinearLayout.LayoutParams(-1, dp(42)));
         map = new WebView(this); map.setLayerType(View.LAYER_TYPE_HARDWARE, null); WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
@@ -133,12 +133,12 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         });
         map.loadUrl("file:///android_asset/riderlink_map.html"); root.addView(map, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout controls = new LinearLayout(this); controls.setPadding(dp(7), dp(5), dp(7), dp(5)); controls.setGravity(Gravity.CENTER);
-        TextView liveLabel=title("LIVE",15,Color.WHITE);controls.addView(liveLabel,new LinearLayout.LayoutParams(dp(48),dp(58)));
+        TextView liveLabel=title("LIVE",12,Color.WHITE);liveLabel.setSingleLine(true);liveLabel.setPadding(0,0,0,0);controls.addView(liveLabel,new LinearLayout.LayoutParams(dp(42),dp(58)));
         sharing = new Switch(this); sharing.setShowText(false); sharing.setGravity(Gravity.CENTER); sharing.setChecked(getSharedPreferences("riderlink_session",MODE_PRIVATE).getBoolean("live",false));
-        controls.addView(sharing, new LinearLayout.LayoutParams(dp(50), dp(58)));
-        privacyButton=compactButton("◎ NEARBY",UiKit.SURFACE_HIGH,10);controls.addView(privacyButton,new LinearLayout.LayoutParams(dp(94),dp(54)));
-        Button refresh = compactButton("↻ REFRESH", Color.rgb(0, 95, 115),10); controls.addView(refresh,new LinearLayout.LayoutParams(dp(100),dp(54)));
-        Button sos = compactButton("! SOS", UiKit.RED,11); controls.addView(sos,new LinearLayout.LayoutParams(dp(68),dp(54))); root.addView(controls);
+        controls.addView(sharing,new LinearLayout.LayoutParams(dp(46),dp(58)));
+        privacyButton=compactButton("◎ NEARBY",UiKit.SURFACE_HIGH,9);LinearLayout.LayoutParams actionLayout=new LinearLayout.LayoutParams(0,dp(54),1f);actionLayout.setMargins(dp(4),0,0,0);controls.addView(privacyButton,actionLayout);
+        Button refresh=compactButton("↻ REFRESH",Color.rgb(0,95,115),9);LinearLayout.LayoutParams refreshLayout=new LinearLayout.LayoutParams(0,dp(54),1.08f);refreshLayout.setMargins(dp(4),0,0,0);controls.addView(refresh,refreshLayout);
+        Button sos=compactButton("! SOS",UiKit.RED,10);LinearLayout.LayoutParams sosLayout=new LinearLayout.LayoutParams(0,dp(54),.72f);sosLayout.setMargins(dp(4),0,0,0);controls.addView(sos,sosLayout);root.addView(controls);
         root.addView(title("RiderLink SOS does not contact 911. Call emergency services when needed.", 10, Color.rgb(150, 160, 164)), new LinearLayout.LayoutParams(-1, dp(34)));
         setContentView(root);
         sharing.setOnCheckedChangeListener((button, checked) -> {
