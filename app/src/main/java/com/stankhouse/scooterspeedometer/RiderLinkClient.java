@@ -2,6 +2,7 @@ package com.stankhouse.scooterspeedometer;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -15,6 +16,9 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import android.util.Base64;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -30,6 +34,59 @@ public class RiderLinkClient {
     public boolean signedIn() { return !prefs.getString("access", "").isEmpty(); }
     public String userId() { return prefs.getString("user_id", ""); }
     public String email() { return prefs.getString("email", ""); }
+
+    /** Creates a Supabase OAuth URL using PKCE so no provider secret is stored in the APK. */
+    public String oauthUrl(String provider) {
+        try {
+            byte[] random = new byte[48]; new SecureRandom().nextBytes(random);
+            String verifier = Base64.encodeToString(random, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+            String challenge = Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)), Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+            prefs.edit().putString("oauth_verifier", verifier).putLong("oauth_started", System.currentTimeMillis()).apply();
+            return URL + "/auth/v1/authorize?provider=" + Uri.encode(provider)
+                    + "&redirect_to=" + Uri.encode("riderlink://auth-callback")
+                    + "&code_challenge=" + Uri.encode(challenge) + "&code_challenge_method=s256";
+        } catch (Exception e) { return ""; }
+    }
+
+    /** Completes either the preferred PKCE response or Supabase's legacy fragment response. */
+    public void completeOAuth(Uri redirect, Callback callback) {
+        if (redirect == null) { callback.complete(false, "Missing RiderLink sign-in response", ""); return; }
+        String error = redirect.getQueryParameter("error_description");
+        if (error == null) error = redirect.getQueryParameter("error");
+        if (error != null && !error.isEmpty()) { callback.complete(false, error, ""); return; }
+        String code = redirect.getQueryParameter("code");
+        String verifier = prefs.getString("oauth_verifier", "");
+        if (code != null && !code.isEmpty() && !verifier.isEmpty()) {
+            try {
+                JSONObject body = new JSONObject().put("auth_code", code).put("code_verifier", verifier);
+                request("POST", "/auth/v1/token?grant_type=pkce", body.toString(), false,
+                        (ok,msg,data) -> finishOAuth(ok,msg,data,callback));
+            } catch (Exception e) { callback.complete(false, e.getMessage(), ""); }
+            return;
+        }
+        Uri fragment = Uri.parse("riderlink://auth-callback?" + (redirect.getFragment() == null ? "" : redirect.getFragment()));
+        String access = fragment.getQueryParameter("access_token"), refresh = fragment.getQueryParameter("refresh_token");
+        if (access == null || access.isEmpty()) { callback.complete(false, "RiderLink sign-in did not return a session", ""); return; }
+        storeOAuthSession(access, refresh == null ? "" : refresh, parseLong(fragment.getQueryParameter("expires_in"),3600), "", "");
+        fetchOAuthUser(callback);
+    }
+
+    private void finishOAuth(boolean ok,String message,String data,Callback callback){
+        if(!ok){callback.complete(false,message,data);return;}
+        try{
+            JSONObject root=new JSONObject(data),user=root.optJSONObject("user");
+            storeOAuthSession(root.optString("access_token"),root.optString("refresh_token"),root.optLong("expires_in",3600),user==null?"":user.optString("id"),user==null?"":user.optString("email"));
+            callback.complete(true,"Signed in to RiderLink",data);
+        }catch(Exception e){callback.complete(false,"Invalid RiderLink sign-in response",data);}
+    }
+    private void fetchOAuthUser(Callback callback){
+        request("GET","/auth/v1/user",null,true,(ok,msg,data)->{
+            if(ok)try{JSONObject user=new JSONObject(data);prefs.edit().putString("user_id",user.optString("id")).putString("email",user.optString("email")).apply();}catch(Exception ignored){}
+            callback.complete(ok,ok?"Signed in to RiderLink":msg,data);
+        });
+    }
+    private void storeOAuthSession(String access,String refresh,long expires,String id,String email){prefs.edit().putString("access",access).putString("refresh",refresh).putString("user_id",id).putString("email",email).putLong("expires_at",System.currentTimeMillis()+expires*1000L).remove("oauth_verifier").remove("oauth_started").apply();}
+    private long parseLong(String value,long fallback){try{return Long.parseLong(value);}catch(Exception ignored){return fallback;}}
 
     public void authenticate(String email, String password, boolean create, Callback callback) {
         try {

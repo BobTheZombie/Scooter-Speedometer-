@@ -59,8 +59,16 @@
         <activity
             android:name=".RiderLinkActivity"
             android:hardwareAccelerated="true"
+            android:launchMode="singleTask"
             android:screenOrientation="sensor"
-            android:exported="false" />
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="riderlink" android:host="auth-callback" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".RiderLinkSocialActivity"
             android:hardwareAccelerated="true"

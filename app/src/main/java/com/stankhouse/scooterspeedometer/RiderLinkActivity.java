@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.pm.PackageManager;
 import android.content.Intent;
+import android.net.Uri;
 import android.graphics.Color;
 import android.location.Location;
 import android.location.LocationListener;
@@ -63,7 +64,13 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     @Override protected void onCreate(Bundle state) {
         super.onCreate(state); client = new RiderLinkClient(this); flockCameras=new FlockCameraProvider(this);policeProvider=new PoliceSightingProvider();speech=new TextToSpeech(this,s->{speechReady=s==TextToSpeech.SUCCESS;if(speechReady){speech.setLanguage(Locale.US);VoiceSettings.apply(this,speech);}}); locations = (LocationManager) getSystemService(LOCATION_SERVICE);openProfileRequested=getIntent().getBooleanExtra("open_profile",false);
         Fullscreen.apply(this);
-        if (client.signedIn()) showRiderLink(); else showAuthentication();
+        if (!handleOAuthIntent(getIntent())) { if (client.signedIn()) showRiderLink(); else showAuthentication(); }
+    }
+
+    @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleOAuthIntent(intent);}
+    private boolean handleOAuthIntent(Intent intent){
+        Uri data=intent==null?null:intent.getData();if(data==null||!"riderlink".equals(data.getScheme())||!"auth-callback".equals(data.getHost()))return false;
+        client.completeOAuth(data,(ok,message,body)->{toast(message);if(ok&&client.signedIn()){String mail=client.email();createDefaultProfile(mail.contains("@")?mail:"Rider"+System.currentTimeMillis()%10000);showRiderLink();}else showAuthentication();});return true;
     }
 
     private TextView title(String value, int size, int color) {
@@ -84,7 +91,10 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         root.addView(email, new LinearLayout.LayoutParams(-1, dp(58))); root.addView(password, new LinearLayout.LayoutParams(-1, dp(58)));
         Button signIn = button("SIGN IN", Color.rgb(0, 105, 125)); Button create = button("CREATE RIDER ACCOUNT", Color.rgb(24, 65, 76));
         root.addView(signIn, new LinearLayout.LayoutParams(-1, dp(54))); root.addView(create, new LinearLayout.LayoutParams(-1, dp(54)));
+        TextView divider=title("OR CONTINUE WITH",11,Color.rgb(125,150,160));root.addView(divider,new LinearLayout.LayoutParams(-1,dp(38)));
+        LinearLayout providers=new LinearLayout(this);providers.setGravity(Gravity.CENTER);Button google=button("G  GOOGLE",Color.rgb(33,66,78)),facebook=button("f  FACEBOOK",Color.rgb(38,78,145));providers.addView(google,new LinearLayout.LayoutParams(0,dp(54),1));providers.addView(facebook,new LinearLayout.LayoutParams(0,dp(54),1));root.addView(providers,new LinearLayout.LayoutParams(-1,dp(58)));
         root.addView(title("Live location is always off until you enable it.", 12, Color.rgb(115, 145, 155)));
+        View.OnClickListener oauth=v->{String provider=v==google?"google":"facebook",url=client.oauthUrl(provider);if(url.isEmpty()){toast("Could not start secure sign-in");return;}try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)));}catch(Exception e){toast("No browser is available for sign-in");}};google.setOnClickListener(oauth);facebook.setOnClickListener(oauth);
         View.OnClickListener action = v -> {
             String mail = email.getText().toString().trim(), pass = password.getText().toString();
             if (!mail.contains("@") || pass.length() < 6) { toast("Enter a valid email and password"); return; }
@@ -98,7 +108,8 @@ public class RiderLinkActivity extends Activity implements LocationListener {
     }
 
     private void createDefaultProfile(String email) {
-        String name = email.substring(0, email.indexOf('@')).replaceAll("[^A-Za-z0-9_]", "");
+        int at=email==null?-1:email.indexOf('@');String seed=at>0?email.substring(0,at):(email==null?"":email);
+        String name = seed.replaceAll("[^A-Za-z0-9_]", "");
         if (name.length() < 3) name = "Rider" + System.currentTimeMillis() % 10000;
         client.saveProfile(name, "Scooter", "invisible", (ok, message, body) -> { });
     }
