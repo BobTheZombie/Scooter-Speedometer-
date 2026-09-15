@@ -51,10 +51,11 @@ public class RiderLinkClient {
     /** Completes either the preferred PKCE response or Supabase's legacy fragment response. */
     public void completeOAuth(Uri redirect, Callback callback) {
         if (redirect == null) { callback.complete(false, "Missing RiderLink sign-in response", ""); return; }
-        String error = redirect.getQueryParameter("error_description");
-        if (error == null) error = redirect.getQueryParameter("error");
+        Uri fragment = Uri.parse("riderlink://auth-callback?" + (redirect.getFragment() == null ? "" : redirect.getFragment()));
+        String error = first(redirect.getQueryParameter("error_description"),fragment.getQueryParameter("error_description"));
+        if (error == null) error = first(redirect.getQueryParameter("error"),fragment.getQueryParameter("error"));
         if (error != null && !error.isEmpty()) { callback.complete(false, error, ""); return; }
-        String code = redirect.getQueryParameter("code");
+        String code = first(redirect.getQueryParameter("code"),fragment.getQueryParameter("code"));
         String verifier = prefs.getString("oauth_verifier", "");
         if (code != null && !code.isEmpty() && !verifier.isEmpty()) {
             try {
@@ -64,9 +65,9 @@ public class RiderLinkClient {
             } catch (Exception e) { callback.complete(false, e.getMessage(), ""); }
             return;
         }
-        Uri fragment = Uri.parse("riderlink://auth-callback?" + (redirect.getFragment() == null ? "" : redirect.getFragment()));
-        String access = fragment.getQueryParameter("access_token"), refresh = fragment.getQueryParameter("refresh_token");
-        if (access == null || access.isEmpty()) { callback.complete(false, "RiderLink sign-in did not return a session", ""); return; }
+        String access = first(redirect.getQueryParameter("access_token"),fragment.getQueryParameter("access_token"));
+        String refresh = first(redirect.getQueryParameter("refresh_token"),fragment.getQueryParameter("refresh_token"));
+        if (access == null || access.isEmpty()) { callback.complete(false,code!=null?"Secure sign-in expired. Tap Google or Facebook and try again.":"RiderLink sign-in did not return a session. Check the provider redirect URL.",""); return; }
         storeOAuthSession(access, refresh == null ? "" : refresh, parseLong(fragment.getQueryParameter("expires_in"),3600), "", "");
         fetchOAuthUser(callback);
     }
@@ -87,6 +88,7 @@ public class RiderLinkClient {
     }
     private void storeOAuthSession(String access,String refresh,long expires,String id,String email){prefs.edit().putString("access",access).putString("refresh",refresh).putString("user_id",id).putString("email",email).putLong("expires_at",System.currentTimeMillis()+expires*1000L).remove("oauth_verifier").remove("oauth_started").apply();}
     private long parseLong(String value,long fallback){try{return Long.parseLong(value);}catch(Exception ignored){return fallback;}}
+    private String first(String a,String b){return a!=null&&!a.isEmpty()?a:b;}
 
     public void authenticate(String email, String password, boolean create, Callback callback) {
         try {
