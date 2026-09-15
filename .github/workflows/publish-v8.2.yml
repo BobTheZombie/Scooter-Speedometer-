@@ -1,10 +1,10 @@
-name: Publish v8.1 release
+name: Publish v8.2 release
 
 on:
   push:
     branches: [v8-rider-copilot]
     paths:
-      - .github/workflows/publish-v8.1.yml
+      - .github/workflows/publish-v8.2.yml
 
 permissions:
   contents: write
@@ -40,7 +40,7 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Build signed v8.1 APK
+      - name: Build signed v8.2 APK
         env:
           ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
@@ -52,23 +52,22 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk             dist/Scooter-Speedometer-v8.1.0.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify             --verbose --print-certs dist/Scooter-Speedometer-v8.1.0.apk
-          sha256sum dist/Scooter-Speedometer-v8.1.0.apk             > dist/Scooter-Speedometer-v8.1.0.apk.sha256
+          cp app/build/outputs/apk/release/app-release.apk             dist/Scooter-Speedometer-v8.2.0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify             --verbose --print-certs dist/Scooter-Speedometer-v8.2.0.apk
+          sha256sum dist/Scooter-Speedometer-v8.2.0.apk             > dist/Scooter-Speedometer-v8.2.0.apk.sha256
 
       - name: Publish GitHub release
         shell: bash
         run: |
-          gh release create v8.1.0             dist/Scooter-Speedometer-v8.1.0.apk             dist/Scooter-Speedometer-v8.1.0.apk.sha256             --target v8-rider-copilot             --title "Scooter Speedometer v8.1"             --notes-file - <<'NOTES'
+          gh release create v8.2.0             dist/Scooter-Speedometer-v8.2.0.apk             dist/Scooter-Speedometer-v8.2.0.apk.sha256             --target v8-rider-copilot             --title "Scooter Speedometer v8.2"             --notes-file - <<'NOTES'
           Rider Copilot v8.2 intelligence release
 
-          - Completely redesigned Settings control center
-          - Completely redesigned Rider account and community menu
-          - Modern layered surfaces, dedicated icons and clearer visual hierarchy
-          - Live GPS and Rider Copilot status strip
-          - Improved labels and descriptions for riding-friendly scanning
-          - Rider Copilot briefings, GPS, battery and strong-wind awareness
-          - Foreground-only voice processing with automatic music ducking
+          - Central prioritized alert queue for navigation, hazards, weather and communications
+          - Route-aware weather checks along OpenNAV+ routes
+          - Arrival-time rain, snow, thunderstorm and strong-wind warnings
+          - Polished Copilot settings with independent controls
+          - Three alert-detail levels and repeat-last-alert support
+          - Foreground-only processing with automatic music ducking
           - Signed with the permanent v8 release identity
 
           Android 6.0+ • versionCode 82
