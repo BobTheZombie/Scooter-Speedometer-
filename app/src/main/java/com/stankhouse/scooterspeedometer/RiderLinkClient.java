@@ -142,6 +142,12 @@ public class RiderLinkClient {
         try { rest("POST", "/rest/v1/rpc/nearby_riders", new JSONObject().put("p_lat", lat).put("p_lon", lon).put("p_radius_km", 25).toString(), "return=representation", callback); }
         catch (Exception e) { callback.complete(false, e.getMessage(), "[]"); }
     }
+    public void setRideBeacon(String kind,String note,double lat,double lon,Callback c){try{rest("POST","/rest/v1/ride_beacons?on_conflict=user_id",new JSONObject().put("user_id",userId()).put("kind",kind).put("note",note).put("latitude",lat).put("longitude",lon).toString(),"resolution=merge-duplicates,return=minimal",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    public void clearRideBeacon(Callback c){rest("DELETE","/rest/v1/ride_beacons?user_id=eq."+userId(),null,"return=minimal",c);}
+    public void nearbyRideBeacons(double lat,double lon,Callback c){try{rest("POST","/rest/v1/rpc/nearby_ride_beacons",new JSONObject().put("p_lat",lat).put("p_lon",lon).put("p_radius_km",40).toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"[]");}}
+    public void sendWave(String riderId,Callback c){try{rest("POST","/rest/v1/rpc/send_rider_wave",new JSONObject().put("p_recipient",riderId).toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    public void riderActivity(Callback c){rest("POST","/rest/v1/rpc/my_rider_activity","{}","return=representation",c);}
+    public void markActivityRead(Callback c){rest("POST","/rest/v1/rpc/mark_rider_activity_read","{}","return=minimal",c);}
     public void nearbySos(double lat, double lon, Callback callback) {
         try { rest("POST", "/rest/v1/rpc/nearby_sos", new JSONObject().put("p_lat", lat).put("p_lon", lon).put("p_radius_km", 40).toString(), "return=representation", callback); }
         catch (Exception e) { callback.complete(false, e.getMessage(), "[]"); }

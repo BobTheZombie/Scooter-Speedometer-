@@ -136,7 +136,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         TextView liveLabel=title("LIVE",12,Color.WHITE);liveLabel.setSingleLine(true);liveLabel.setPadding(0,0,0,0);controls.addView(liveLabel,new LinearLayout.LayoutParams(dp(42),dp(58)));
         sharing = new Switch(this); sharing.setShowText(false); sharing.setGravity(Gravity.CENTER); sharing.setChecked(getSharedPreferences("riderlink_session",MODE_PRIVATE).getBoolean("live",false));
         controls.addView(sharing,new LinearLayout.LayoutParams(dp(46),dp(58)));
-        privacyButton=compactButton("◎ NEARBY",UiKit.SURFACE_HIGH,9);LinearLayout.LayoutParams actionLayout=new LinearLayout.LayoutParams(0,dp(54),1f);actionLayout.setMargins(dp(4),0,0,0);controls.addView(privacyButton,actionLayout);
+        privacyButton=compactButton("◉ BEACON",UiKit.SURFACE_HIGH,9);LinearLayout.LayoutParams actionLayout=new LinearLayout.LayoutParams(0,dp(54),1f);actionLayout.setMargins(dp(4),0,0,0);controls.addView(privacyButton,actionLayout);
         Button refresh=compactButton("↻ REFRESH",Color.rgb(0,95,115),9);LinearLayout.LayoutParams refreshLayout=new LinearLayout.LayoutParams(0,dp(54),1.08f);refreshLayout.setMargins(dp(4),0,0,0);controls.addView(refresh,refreshLayout);
         Button sos=compactButton("! SOS",UiKit.RED,10);LinearLayout.LayoutParams sosLayout=new LinearLayout.LayoutParams(0,dp(54),.72f);sosLayout.setMargins(dp(4),0,0,0);controls.addView(sos,sosLayout);root.addView(controls);
         root.addView(title("RiderLink SOS does not contact 911. Call emergency services when needed.", 10, Color.rgb(150, 160, 164)), new LinearLayout.LayoutParams(-1, dp(34)));
@@ -148,9 +148,17 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         });
         refresh.setOnClickListener(v -> refreshNearby()); sos.setOnClickListener(v -> beginSosCountdown()); profileButton.setOnClickListener(v -> showProfileDialog());
         socialButton.setOnClickListener(v->startActivity(new Intent(this,RiderLinkSocialActivity.class)));
-        privacyButton.setOnClickListener(v->toast("LIVE shares an approximate public position. Turn LIVE off to become invisible."));
+        privacyButton.setOnClickListener(v->showBeaconDialog());
         startLocation(); handler.removeCallbacks(publish); handler.post(publish);
         if(openProfileRequested){openProfileRequested=false;root.postDelayed(this::showProfileDialog,180L);}
+    }
+
+    private void showBeaconDialog(){
+        if(fix==null){toast("Wait for GPS lock before posting a Ride Beacon");return;}
+        String[] labels={"🛵 Cruising now","⚡ Down to ride","⌖ Meet up","🔧 Need mechanical help","Turn my beacon off"};
+        String[] kinds={"cruising","ride","meetup","mechanical","off"};
+        new AlertDialog.Builder(this).setTitle("Ride Beacon").setMessage("Visible to nearby signed-in riders for up to 2 hours. Your exact home address is never shown as a label.")
+                .setItems(labels,(d,w)->{if(w==4){client.clearRideBeacon((ok,m,b)->{toast(ok?"Ride Beacon turned off":m);refreshNearby();});return;}EditText note=input("Optional note (meeting spot, route, or problem)",false);note.setSingleLine(false);new AlertDialog.Builder(this).setTitle(labels[w]).setView(note).setPositiveButton("GO LIVE",(x,y)->client.setRideBeacon(kinds[w],note.getText().toString().trim(),fix.getLatitude(),fix.getLongitude(),(ok,m,b)->{toast(ok?"Ride Beacon is live":m);refreshNearby();})).setNegativeButton("Cancel",null).show();}).setNegativeButton("Cancel",null).show();
     }
 
     private void showProfileDialog() {
@@ -222,6 +230,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
                 }
             } catch (Exception ignored) { }
         });
+        client.nearbyRideBeacons(fix.getLatitude(),fix.getLongitude(),(ok,message,body)->{if(!ok)return;String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");map.evaluateJavascript("setRideBeacons('"+safe+"')",null);});
         client.nearbyCommunityHazards(fix.getLatitude(),fix.getLongitude(),(ok,message,body)->{if(!ok)return;String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");map.evaluateJavascript("setCommunityHazards('"+safe+"')",null);});
         if(System.currentTimeMillis()-lastFlockRefresh>15L*60L*1000L){lastFlockRefresh=System.currentTimeMillis();flockCameras.nearby(fix.getLatitude(),fix.getLongitude(),(ok,body,message)->{if(!ok){lastFlockRefresh=0;status.setText("ALPR feed unavailable • tap REFRESH to retry");if(mapReady)map.evaluateJavascript("document.getElementById('flockToggle').textContent='ALPR RETRY'",null);return;}String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setFlockHopperCameras('"+safe+"')",null);});}
         if(System.currentTimeMillis()-lastPoliceRefresh>30L*1000L){lastPoliceRefresh=System.currentTimeMillis();policeProvider.nearby(fix.getLatitude(),fix.getLongitude(),(ok,body,message)->{if(!ok){lastPoliceRefresh=0;return;}policePoints.clear();try{JSONArray list=new JSONArray(body);for(int i=0;i<list.length();i++){JSONObject p=list.getJSONObject(i);policePoints.add(new PolicePoint(p.optLong("id"),p.getDouble("latitude"),p.getDouble("longitude")));}}catch(Exception ignored){}String safe=body.replace("\\","\\\\").replace("'","\\'").replace("\n","");if(mapReady)map.evaluateJavascript("setPoliceSightings('"+safe+"')",null);checkPoliceAhead();});}
