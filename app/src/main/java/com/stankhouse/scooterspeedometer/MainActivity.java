@@ -578,6 +578,7 @@ public class MainActivity extends Activity implements LocationListener {
 
     private class SpeedView extends View {
         private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final SenseWeatherScene weatherScene = new SenseWeatherScene();
         private final RectF arc = new RectF();
         private boolean metric = prefs.getBoolean("metric", false);
         private float accuracy = 999f;
@@ -1299,68 +1300,7 @@ public class MainActivity extends Activity implements LocationListener {
 
         private void drawWeatherAtmosphere(Canvas c, float w, float h) {
             if (weatherData == null) return;
-            int code = weatherData.weatherCode;
-            long now = SystemClock.uptimeMillis();
-            boolean thunder = code >= 95;
-            boolean snow = (code >= 71 && code <= 77) || (code >= 85 && code <= 86);
-            boolean rain = (code >= 51 && code <= 67) || (code >= 80 && code <= 82);
-            boolean fog = code == 45 || code == 48;
-            int top = thunder ? Color.rgb(18, 22, 38) : rain ? Color.rgb(34, 55, 68) :
-                    snow ? Color.rgb(89, 112, 129) : fog ? Color.rgb(78, 91, 99) :
-                            code == 0 ? Color.rgb(14, 91, 153) : Color.rgb(48, 72, 88);
-            int bottom = thunder ? Color.rgb(3, 6, 16) : rain ? Color.rgb(8, 20, 29) :
-                    snow ? Color.rgb(25, 43, 58) : fog ? Color.rgb(27, 38, 44) :
-                            code == 0 ? Color.rgb(3, 34, 69) : Color.rgb(9, 24, 34);
-            paint.setStyle(Paint.Style.FILL);
-            paint.setShader(new LinearGradient(0, 0, 0, h, top, bottom, Shader.TileMode.CLAMP));
-            c.drawRect(0, 0, w, h, paint);
-            paint.setShader(null);
-
-            if (code == 0) {
-                float pulse = 1f + .05f * (float) Math.sin(now / 900.0);
-                for (int i = 5; i >= 1; i--) {
-                    paint.setColor(Color.argb(12 + i * 5, 255, 205, 70));
-                    c.drawCircle(w * .84f, h * .31f, w * (.04f + i * .025f) * pulse, paint);
-                }
-                paint.setColor(Color.argb(220, 255, 224, 105));
-                c.drawCircle(w * .84f, h * .31f, w * .045f, paint);
-            }
-
-            // Use the opaque sky gradient for cloud cover. Large translucent cloud circles
-            // caused visible bands/bubbles over dashboard cards and have been removed.
-
-            if (rain || thunder) {
-                paint.setColor(Color.argb(thunder ? 145 : 105, 140, 210, 255));
-                paint.setStrokeWidth(Math.max(2f, w / 360f));
-                for (int i = 0; i < 55; i++) {
-                    float x = (float) ((i * 83L + now / 7L) % (long) (w + 40)) - 20;
-                    float y = (float) ((i * 137L + now / 3L) % (long) (h + 90)) - 90;
-                    c.drawLine(x, y, x - w * .018f, y + h * .045f, paint);
-                }
-            } else if (snow) {
-                paint.setColor(Color.argb(180, 245, 250, 255));
-                for (int i = 0; i < 42; i++) {
-                    float x = (float) ((i * 97L + now / (18L + i % 7)) % (long) (w + 30));
-                    float y = (float) ((i * 149L + now / (9L + i % 5)) % (long) (h + 30));
-                    c.drawCircle(x, y, 2f + i % 5, paint);
-                }
-            } else if (fog) {
-                for (int i = 0; i < 8; i++) {
-                    paint.setColor(Color.argb(22 + i * 3, 225, 235, 238));
-                    float y = h * (.12f + i * .105f);
-                    float offset = (float) ((now / (20 + i * 3)) % (long) (w * .2f));
-                    c.drawRoundRect(new RectF(-w * .2f + offset, y, w * .85f + offset, y + h * .035f), 30, 30, paint);
-                }
-            }
-
-            if (thunder && now % 6500L < 170L) {
-                paint.setColor(Color.argb(115, 220, 235, 255)); c.drawRect(0, 0, w, h, paint);
-                paint.setColor(Color.rgb(255, 240, 130)); paint.setStyle(Paint.Style.STROKE);
-                paint.setStrokeWidth(Math.max(6f, w / 85f));
-                Path bolt = new Path(); bolt.moveTo(w * .72f, h * .12f); bolt.lineTo(w * .60f, h * .37f);
-                bolt.lineTo(w * .70f, h * .37f); bolt.lineTo(w * .54f, h * .66f); c.drawPath(bolt, paint);
-                paint.setStyle(Paint.Style.FILL);
-            }
+            weatherScene.draw(c,w,h,weatherData.weatherCode,SystemClock.uptimeMillis(),nightMode.isNight());
         }
 
         private boolean weatherAnimationActive() {
@@ -1530,7 +1470,7 @@ public class MainActivity extends Activity implements LocationListener {
             drawRoadAwareness(c, w, h, scale, shownMph);
             if (dashboardTheme == 1) drawInfernoFrames(c, scale);
             if (editingDashboard) drawEditorOverlay(c, scale);
-            if (weatherAnimationActive()) postInvalidateOnAnimation();
+            if (weatherAnimationActive()) postInvalidateDelayed(33L);
         }
 
         private void drawEditorOverlay(Canvas c, float scale) {
