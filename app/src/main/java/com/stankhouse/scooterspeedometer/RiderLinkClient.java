@@ -34,6 +34,8 @@ public class RiderLinkClient {
     public boolean signedIn() { return !prefs.getString("access", "").isEmpty(); }
     public String userId() { return prefs.getString("user_id", ""); }
     public String email() { return prefs.getString("email", ""); }
+    public boolean plusActive(){long expires=prefs.getLong("membership_expires",0);return prefs.getBoolean("membership_plus",false)&&(expires==0||expires>System.currentTimeMillis());}
+    public boolean membershipAdmin(){return prefs.getBoolean("membership_admin",false);}
 
     /** Creates a Supabase OAuth URL using PKCE so no provider secret is stored in the APK. */
     public String oauthUrl(String provider) {
@@ -148,6 +150,10 @@ public class RiderLinkClient {
     public void sendWave(String riderId,Callback c){try{rest("POST","/rest/v1/rpc/send_rider_wave",new JSONObject().put("p_recipient",riderId).toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
     public void riderActivity(Callback c){rest("POST","/rest/v1/rpc/my_rider_activity","{}","return=representation",c);}
     public void markActivityRead(Callback c){rest("POST","/rest/v1/rpc/mark_rider_activity_read","{}","return=minimal",c);}
+    public void membership(Callback c){rest("POST","/rest/v1/rpc/my_riderlink_membership","{}","return=representation",(ok,m,b)->{if(ok)cacheMembership(b);c.complete(ok,m,b);});}
+    public void redeemMembershipCode(String code,Callback c){try{rest("POST","/rest/v1/rpc/redeem_riderlink_code",new JSONObject().put("p_code",code).toString(),"return=representation",(ok,m,b)->{if(ok)cacheMembership(b);c.complete(ok,m,b);});}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    public void createMembershipCode(String name,String reward,int days,Callback c){try{rest("POST","/rest/v1/rpc/create_riderlink_code",new JSONObject().put("p_name",name).put("p_reward_type",reward).put("p_complimentary_days",days).put("p_expires_days",30).toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    private void cacheMembership(String body){try{JSONArray rows=new JSONArray(body);if(rows.length()==0)return;JSONObject m=rows.getJSONObject(0);String expiry=m.optString("expires_at","");long time=0;if(!expiry.isEmpty()&&!"null".equals(expiry))try{java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss",java.util.Locale.US);f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));time=f.parse(expiry.substring(0,19)).getTime();}catch(Exception ignored){}prefs.edit().putString("membership_tier",m.optString("tier","free")).putBoolean("membership_plus",m.optBoolean("plus_access",false)).putBoolean("membership_price",m.optBoolean("founder_price_eligible",false)).putBoolean("membership_admin",m.optBoolean("is_admin",false)).putLong("membership_expires",time).apply();}catch(Exception ignored){}}
     public void nearbySos(double lat, double lon, Callback callback) {
         try { rest("POST", "/rest/v1/rpc/nearby_sos", new JSONObject().put("p_lat", lat).put("p_lon", lon).put("p_radius_km", 40).toString(), "return=representation", callback); }
         catch (Exception e) { callback.complete(false, e.getMessage(), "[]"); }
