@@ -63,6 +63,22 @@ final class GeocodingService {
         throw new Exception("Address not found. Try including the street number, city, state, and ZIP.");
     }
 
+    /** Lightweight reverse lookup for the dashboard. Call from a worker thread. */
+    static String reverseStreet(double latitude,double longitude) throws Exception {
+        String endpoint=String.format(Locale.US,
+                "https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&addressdetails=1&lat=%.6f&lon=%.6f",
+                latitude,longitude);
+        JSONObject root=new JSONObject(get(endpoint));
+        JSONObject address=root.optJSONObject("address");
+        if(address!=null){
+            String[] keys={"road","pedestrian","residential","cycleway","footway","path","service"};
+            for(String key:keys){String value=address.optString(key,"").trim();if(!value.isEmpty())return value;}
+        }
+        String display=root.optString("display_name","").trim();
+        if(!display.isEmpty()){int comma=display.indexOf(',');return comma>0?display.substring(0,comma).trim():display;}
+        throw new Exception("Street unavailable");
+    }
+
     private static Result nominatim(String query, Location location) throws Exception {
         StringBuilder endpoint = new StringBuilder("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&q=")
                 .append(Uri.encode(query));

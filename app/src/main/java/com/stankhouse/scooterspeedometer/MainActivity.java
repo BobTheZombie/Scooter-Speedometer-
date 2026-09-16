@@ -33,6 +33,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.speech.RecognitionListener;
@@ -52,6 +53,8 @@ import android.widget.TextView;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity implements LocationListener {
     private interface MenuHandler { void select(int which); }
@@ -94,6 +97,13 @@ public class MainActivity extends Activity implements LocationListener {
     private SpeechRecognizer speechRecognizer;
     private String hudVoiceStatus="";
     private long hudVoiceStatusUntil;
+    private final Handler mainHandler=new Handler(Looper.getMainLooper());
+    private final ExecutorService roadNameWorker=Executors.newSingleThreadExecutor();
+    private String currentStreet="LOCATING ROAD…";
+    private float smoothedBearing=Float.NaN;
+    private long lastRoadNameLookup;
+    private Location lastRoadNameLocation;
+    private boolean roadNameLookupRunning;
     private final BroadcastReceiver hudReceiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){if(speedView!=null)speedView.invalidate();}};
 
     private final MediaController.Callback mediaCallback = new MediaController.Callback() {
@@ -109,6 +119,7 @@ public class MainActivity extends Activity implements LocationListener {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         prefs = getSharedPreferences("speedometer", MODE_PRIVATE);
+        currentStreet=prefs.getString("current_street","LOCATING ROAD…");
         tripMeters = prefs.getFloat("trip", 0f);
         maxMps = prefs.getFloat("max", 0f);
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
@@ -466,6 +477,7 @@ public class MainActivity extends Activity implements LocationListener {
             if (distance < 120f && dt < 15000L && (raw > 0.7f || distance > 4f)) tripMeters += distance;
         }
         lastGoodLocation = location;
+        updateRoadCompass(location);
         nightMode.updateLocation(location.getLatitude(), location.getLongitude());
         roadAwareness.update(location, smoothedMps);
         deliveryCockpit.updateMileage(location);rideRecorder.update(location);crashDetector.update(location);
@@ -476,6 +488,16 @@ public class MainActivity extends Activity implements LocationListener {
         speedView.accuracy = location.getAccuracy();
         speedView.invalidate();
     }
+    private void updateRoadCompass(Location location){
+        if(location.hasBearing()&&location.getSpeed()>=.8f){float next=(location.getBearing()+360f)%360f;if(Float.isNaN(smoothedBearing))smoothedBearing=next;else{float delta=((next-smoothedBearing+540f)%360f)-180f;smoothedBearing=(smoothedBearing+delta*.22f+360f)%360f;}}
+        long now=SystemClock.elapsedRealtime();
+        if(roadNameLookupRunning||now-lastRoadNameLookup<30000L)return;
+        if(lastRoadNameLocation!=null&&lastRoadNameLocation.distanceTo(location)<80f&&now-lastRoadNameLookup<120000L)return;
+        final Location sample=new Location(location);roadNameLookupRunning=true;lastRoadNameLookup=now;lastRoadNameLocation=sample;
+        roadNameWorker.execute(()->{String street=null;try{street=GeocodingService.reverseStreet(sample.getLatitude(),sample.getLongitude());}catch(Exception ignored){}final String result=street;mainHandler.post(()->{roadNameLookupRunning=false;if(result!=null&&!result.isEmpty()){currentStreet=result;prefs.edit().putString("current_street",result).apply();if(speedView!=null)speedView.invalidate();}});});
+    }
+    private String compassDirection(){if(Float.isNaN(smoothedBearing))return "—";String[] points={"N","NE","E","SE","S","SW","W","NW"};return points[Math.round(smoothedBearing/45f)%8];}
+    private String roadCompassLabel(){String street=currentStreet==null||currentStreet.trim().isEmpty()?"ROAD UNKNOWN":currentStreet.trim();if(street.length()>32)street=street.substring(0,31)+"…";return compassDirection()+"  •  "+street;}
     @Override public void onProviderEnabled(String provider) { speedView.invalidate(); }
     @Override public void onProviderDisabled(String provider) { speedView.invalidate(); }
     @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
@@ -573,6 +595,7 @@ public class MainActivity extends Activity implements LocationListener {
         if(audioRack!=null)audioRack.release();
         if(updateManager!=null)updateManager.destroy();
         if(riderCopilot!=null)riderCopilot.shutdown();
+        mainHandler.removeCallbacksAndMessages(null);roadNameWorker.shutdownNow();
         super.onDestroy();
     }
 
@@ -1424,6 +1447,8 @@ public class MainActivity extends Activity implements LocationListener {
                     Math.min(150f * scale, h * .18f), Color.WHITE, Paint.Align.CENTER, true);
             text(c, metric ? "KM/H" : "MPH", cx, h * .615f, 27f * scale,
                     accentColor(), Paint.Align.CENTER, true);
+            text(c, roadCompassLabel(), cx, h * .655f, 17f * scale,
+                    Color.rgb(205,229,238), Paint.Align.CENTER, true);
             String status; int statusColor;
             if (!permission) { status = "TAP GAUGE TO ALLOW GPS"; statusColor = Color.rgb(255,179,0); }
             else if (!gpsOn) { status = "TURN ON GPS"; statusColor = Color.rgb(255,179,0); }
