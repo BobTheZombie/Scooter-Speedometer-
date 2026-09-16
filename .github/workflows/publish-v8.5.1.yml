@@ -1,0 +1,67 @@
+name: Publish v8.5.1 road compass release
+
+on:
+  push:
+    branches: [v8-rider-copilot]
+    paths:
+      - .github/workflows/publish-v8.5.1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+      KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v8-rider-copilot
+          fetch-depth: 0
+      - name: Restore permanent signing key
+        shell: bash
+        run: |
+          test -n "$KEY_PASSWORD"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+            -in signing/v8-release-key.p12.enc -out "$KEYSTORE_PATH" -pass env:KEY_PASSWORD
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build signed APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+          ANDROID_KEY_ALIAS: scooter-v8
+          ANDROID_KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify and publish
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/Scooter-Speedometer-v8.5.1.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Scooter-Speedometer-v8.5.1.apk
+          sha256sum dist/Scooter-Speedometer-v8.5.1.apk > dist/Scooter-Speedometer-v8.5.1.apk.sha256
+          gh release create v8.5.1 \
+            dist/Scooter-Speedometer-v8.5.1.apk dist/Scooter-Speedometer-v8.5.1.apk.sha256 \
+            --target v8-rider-copilot --title "Scooter Speedometer v8.5.1 • Road Compass" \
+            --notes-file - <<'NOTES'
+          - Live current-street display beneath the speedometer
+          - Smoothed eight-direction compass: N, NE, E, SE, S, SW, W, NW
+          - Street name is retained during temporary signal loss
+          - Distance- and time-gated reverse lookups reduce network use and battery drain
+          - Long road names are safely shortened to preserve the dashboard layout
+          - Includes all RiderLink+ v8.5 Beacons, Waves, and activity features
+
+          Android 6.0+ • versionCode 90
+          NOTES
+      - name: Remove plaintext signing key
+        if: always()
+        run: rm -f "$KEYSTORE_PATH"
