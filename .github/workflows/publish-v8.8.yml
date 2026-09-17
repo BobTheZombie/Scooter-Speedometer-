@@ -1,0 +1,67 @@
+name: Publish v8.8.0 RiderLink+ Safety Circle release
+
+on:
+  push:
+    branches: [v8-rider-copilot]
+    paths: [.github/workflows/publish-v8.8.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+      KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v8-rider-copilot
+          fetch-depth: 0
+      - name: Restore permanent signing key
+        run: |
+          test -n "$KEY_PASSWORD"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+            -in signing/v8-release-key.p12.enc -out "$KEYSTORE_PATH" -pass env:KEY_PASSWORD
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build signed APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+          ANDROID_KEY_ALIAS: scooter-v8
+          ANDROID_KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify and publish
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/Scooter-Speedometer-v8.8.0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Scooter-Speedometer-v8.8.0.apk
+          sha256sum dist/Scooter-Speedometer-v8.8.0.apk > dist/Scooter-Speedometer-v8.8.0.apk.sha256
+          gh release create v8.8.0 \
+            dist/Scooter-Speedometer-v8.8.0.apk dist/Scooter-Speedometer-v8.8.0.apk.sha256 \
+            --target v8-rider-copilot --title "Scooter Speedometer v8.8 • RiderLink+ Safety Circle" \
+            --notes-file - <<'NOTES'
+          - Trusted RiderLink Safety Circle with explicit invitation acceptance
+          - Opt-in live safety trips using a visible foreground location service
+          - Configurable 15, 30, or 60 minute rider check-ins
+          - Overdue check-in events and on-device reminders
+          - Possible-crash events delivered to accepted trusted riders
+          - One-tap I’M OKAY check-in and immediate trip/location-sharing shutdown
+          - Safety data protected by Supabase RLS
+          - RiderLink safety features do not call 911 or guarantee emergency response
+
+          Run supabase/riderlink_safety_circle_v88.sql before using Safety Circle.
+          Android 6.0+ • versionCode 93
+          NOTES
+      - name: Remove plaintext signing key
+        if: always()
+        run: rm -f "$KEYSTORE_PATH"
