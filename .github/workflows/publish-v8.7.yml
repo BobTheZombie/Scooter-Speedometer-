@@ -1,0 +1,68 @@
+name: Publish v8.7.0 RiderLink+ Convoy release
+
+on:
+  push:
+    branches: [v8-rider-copilot]
+    paths:
+      - .github/workflows/publish-v8.7.yml
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+      KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v8-rider-copilot
+          fetch-depth: 0
+      - name: Restore permanent signing key
+        run: |
+          test -n "$KEY_PASSWORD"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+            -in signing/v8-release-key.p12.enc -out "$KEYSTORE_PATH" -pass env:KEY_PASSWORD
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Build signed APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+          ANDROID_KEY_ALIAS: scooter-v8
+          ANDROID_KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify and publish
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/Scooter-Speedometer-v8.7.0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Scooter-Speedometer-v8.7.0.apk
+          sha256sum dist/Scooter-Speedometer-v8.7.0.apk > dist/Scooter-Speedometer-v8.7.0.apk.sha256
+          gh release create v8.7.0 \
+            dist/Scooter-Speedometer-v8.7.0.apk dist/Scooter-Speedometer-v8.7.0.apk.sha256 \
+            --target v8-rider-copilot --title "Scooter Speedometer v8.7 • RiderLink+ Convoy" \
+            --notes-file - <<'NOTES'
+          - RiderLink+ Convoy rooms with shareable invite codes
+          - Live map with moving leader and rider scooter markers
+          - Spoken regroup, fuel, mechanical, hazard, police, pull-over, and ready alerts
+          - Signal-loss and leader gap/falling-behind warnings
+          - Scooter-safe and avoid-highways route context
+          - Temporary room-only location sharing that stops on leave
+          - Plus membership is required to create and lead; joining and safety alerts remain free
+          - Includes v8.6 membership and v8.5.1 live road compass features
+
+          Run supabase/riderlink_membership_v86.sql first, then supabase/riderlink_convoy_v87.sql.
+          Android 6.0+ • versionCode 92
+          NOTES
+      - name: Remove plaintext signing key
+        if: always()
+        run: rm -f "$KEYSTORE_PATH"
