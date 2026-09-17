@@ -200,6 +200,11 @@ public class RiderLinkClient {
     public void sendConvoyAlert(long rideId,String type,Double lat,Double lon,Callback c){try{JSONObject b=new JSONObject().put("p_ride",rideId).put("p_type",type).put("p_lat",lat==null?JSONObject.NULL:lat).put("p_lon",lon==null?JSONObject.NULL:lon);rest("POST","/rest/v1/rpc/send_convoy_alert",b.toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
     public void leaveConvoy(long rideId,Callback c){try{rest("POST","/rest/v1/rpc/leave_convoy",new JSONObject().put("p_ride",rideId).toString(),"return=minimal",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
     public void stopGroupRideLocation(long rideId,Callback c){rest("DELETE","/rest/v1/group_ride_presence?ride_id=eq."+rideId+"&user_id=eq."+userId(),null,"return=minimal",c);}
+    /** Event operations use server-checked RPCs; the client never chooses a host or RSVP owner. */
+    public void eventRpc(String action, JSONObject body, Callback callback) {
+        rest("POST", "/rest/v1/rpc/" + action, body.toString(), "return=representation", callback);
+    }
+
     public void safetyCircle(Callback c){rest("POST","/rest/v1/rpc/my_safety_circle","{}","return=representation",c);}
     public void addSafetyContact(String username,Callback c){try{rest("POST","/rest/v1/rpc/add_safety_contact",new JSONObject().put("p_username",username).toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
     public void acceptSafetyContact(long relationId,Callback c){try{rest("POST","/rest/v1/rpc/accept_safety_contact",new JSONObject().put("p_relation",relationId).toString(),"return=minimal",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
