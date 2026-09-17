@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 37043)
-Total output lines: 1684
-
 package com.stankhouse.scooterspeedometer;
 
 import android.Manifest;
@@ -672,7 +669,280 @@ public class MainActivity extends Activity implements LocationListener {
 
         private void showWeatherSkinPicker() {
             String[] skins = {"HTC Sense glass", "Neon cyan", "Minimal clear",
-               …7043 tokens truncated…paint); paint.setStyle(Paint.Style.FILL);
+                    "Retro amber", "Storm radar"};
+            new AlertDialog.Builder(MainActivity.this).setTitle("Weather widget skin")
+                    .setSingleChoiceItems(skins, weatherSkin, (dialog, which) -> {
+                        weatherSkin = which; prefs.edit().putInt("weather_skin", which).apply();
+                        invalidate(); dialog.dismiss();
+                    }).setNegativeButton("Cancel", null).show();
+        }
+
+        private void applyPreset(boolean landscape, boolean compact) {
+            DashboardLayout preset = DashboardLayout.preset(landscape, compact);
+            preset.albumAlpha = dashboardLayout.albumAlpha;
+            preset.gaugeColor = dashboardLayout.gaugeColor;
+            preset.gaugeStyle = dashboardLayout.gaugeStyle;
+            dashboardLayout = preset;
+            saveDashboard(); invalidate();
+        }
+
+        private void showProfilePicker(boolean save) {
+            String[] profiles = {"Layout 1", "Layout 2", "Layout 3"};
+            new AlertDialog.Builder(MainActivity.this).setTitle(save ? "Save layout" : "Load layout")
+                    .setItems(profiles, (dialog, which) -> {
+                        String key = "dashboard_profile_" + which;
+                        if (save) prefs.edit().putString(key, dashboardLayout.encode()).apply();
+                        else {
+                            String stored = prefs.getString(key, "");
+                            if (!stored.isEmpty()) {
+                                dashboardLayout = DashboardLayout.decode(stored, dashboardLayout);
+                                saveDashboard(); invalidate();
+                            }
+                        }
+                    }).show();
+        }
+
+        private void showDashboardCustomizer() {
+            String[] choices = {"Ride Center", "Dashboard layout", "Appearance & media",
+                    "OpenNAV+", "Night mode & road safety", "Rider Copilot & voice",
+                    "Delivery cockpit", "Dashboard profiles", "Software update"};
+            String[] details={"Record rides, maintenance, crash check-in and groups",
+                    "Arrange panels, resize widgets and apply presets",
+                    "Themes, gauge design, album artwork and live weather",
+                    "Offline maps, scooter-safe routing and saved destinations",
+                    "Automatic dimming, OLED mode, speed and hazard warnings",
+                    "Voice, spoken alerts, HUD reading and ride briefings",
+                    "DoorDash offers, delivery shifts and mileage",
+                    "Save and restore three complete cockpit arrangements",
+                    "Check GitHub for a signed production release"};
+            showPolishedMenu("SETTINGS","Personalize the entire riding system",choices,details,which -> {
+                        if (which == 0) showRideCenter();
+                        else if (which == 1) showLayoutMenu();
+                        else if (which == 2) showAppearanceMenu();
+                        else if (which == 3) showOpenNavSettings();
+                        else if (which == 4) showRoadSettings();
+                        else if (which == 5) showCopilotSettings();
+                        else if (which == 6) showDasherSettings();
+                        else if(which==7)showProfilesMenu();
+                        else updateManager.check(true);
+                    });
+        }
+
+                private void showOpenNavSettings(){OfflineRegionManager regions=new OfflineRegionManager(MainActivity.this);boolean avoid=prefs.getBoolean("opennav_avoid_highways",true);long used=MapTileCache.sizeBytes(MainActivity.this)/(1024L*1024L);int max=prefs.getInt("opennav_cache_mb",120);String[] choices={"Download offline region","Scooter-safe routing","Map cache size","Clear offline maps & cache","Recent destinations & favorites","Report missing address"};String[] details={regions.summary(),avoid?"ON • avoid motorways, toll roads and highway ramps":"OFF • fastest car-profile route",used+" MB used • "+max+" MB limit","Remove cached tiles, vectors and offline address index","Shown automatically in destination search • hold to favorite","Open an OpenStreetMap note at the current GPS position"};regions.shutdown();showPolishedMenu("OPENNAV+ OFFLINE","Navigation that survives weak signal",choices,details,which->{if(which==0)chooseOfflineRadius();else if(which==1){boolean next=!prefs.getBoolean("opennav_avoid_highways",true);prefs.edit().putBoolean("opennav_avoid_highways",next).apply();android.widget.Toast.makeText(MainActivity.this,next?"Scooter-safe routing enabled":"Fastest routing enabled",android.widget.Toast.LENGTH_SHORT).show();}else if(which==2)chooseCacheSize();else if(which==3){int n=MapTileCache.clear(MainActivity.this);android.widget.Toast.makeText(MainActivity.this,"Cleared "+n+" cached files",android.widget.Toast.LENGTH_LONG).show();}else if(which==4){new AddressAutocompleteDialog(MainActivity.this,lastGoodLocation,MainActivity.this::chooseNavigationApp).show();}else reportMissingAddress();});}
+        private void chooseOfflineRadius(){if(lastGoodLocation==null){android.widget.Toast.makeText(MainActivity.this,"Wait for GPS lock before downloading a region",android.widget.Toast.LENGTH_LONG).show();return;}String[] radii={"1 mile • neighborhood","3 miles • city area","5 miles • extended area"};new AlertDialog.Builder(MainActivity.this).setTitle("Download around current location").setItems(radii,(d,w)->{int radius=new int[]{1,3,5}[w];android.widget.Toast.makeText(MainActivity.this,"Downloading OSM roads and addresses…",android.widget.Toast.LENGTH_LONG).show();OfflineRegionManager manager=new OfflineRegionManager(MainActivity.this);manager.download(lastGoodLocation,radius,(ok,message)->runOnUiThread(()->{android.widget.Toast.makeText(MainActivity.this,message,android.widget.Toast.LENGTH_LONG).show();manager.shutdown();}));}).setNegativeButton("Cancel",null).show();}
+        private void chooseCacheSize(){String[] sizes={"64 MB","120 MB","256 MB","512 MB"};int current=prefs.getInt("opennav_cache_mb",120),selected=current<=64?0:current<=120?1:current<=256?2:3;new AlertDialog.Builder(MainActivity.this).setTitle("OpenNAV+ cache limit").setSingleChoiceItems(sizes,selected,(d,w)->{prefs.edit().putInt("opennav_cache_mb",new int[]{64,120,256,512}[w]).apply();d.dismiss();}).setNegativeButton("Cancel",null).show();}
+        private void reportMissingAddress(){if(lastGoodLocation==null){android.widget.Toast.makeText(MainActivity.this,"GPS lock is required to place the map note",android.widget.Toast.LENGTH_LONG).show();return;}String url=String.format(Locale.US,"https://www.openstreetmap.org/note/new?lat=%.7f&lon=%.7f",lastGoodLocation.getLatitude(),lastGoodLocation.getLongitude());startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(url)));}
+
+        private void showRideCenter(){boolean recording=rideRecorder.active(),crash=prefs.getBoolean("crash_detection",false);org.json.JSONArray history=rideRecorder.history();String last=history.length()==0?"No completed rides":rideRecorder.summary(history.optJSONObject(history.length()-1));String[] choices={recording?"Stop & save current ride":"Start ride recording","Ride history","Export ride log","Maintenance garage","Crash detection & check-in","Safety Circle","RiderLink group rides"};String[] details={recording?"Finish the session and store its GPS trace":"Record route, time, speed and distance",history.length()+" rides • last: "+last,"Share CSV with mileage and ride statistics",String.format(Locale.US,"Service schedule • %.1f recorded miles",rideRecorder.lifetimeMiles()),crash?"ON • impact + sudden-stop detection":"OFF • tap to enable","Trusted contacts, live trips and overdue check-ins","Create or join a temporary live riding group"};showPolishedMenu("RIDE CENTER","Trips, scooter care and rider safety",choices,details,which->{if(which==0){if(rideRecorder.active()){org.json.JSONObject done=rideRecorder.stop();android.widget.Toast.makeText(MainActivity.this,"Ride saved • "+rideRecorder.summary(done),android.widget.Toast.LENGTH_LONG).show();}else{rideRecorder.start();android.widget.Toast.makeText(MainActivity.this,"Ride recording started",android.widget.Toast.LENGTH_LONG).show();}invalidate();}else if(which==1)showRideHistory();else if(which==2){Intent share=new Intent(Intent.ACTION_SEND);share.setType("text/csv");share.putExtra(Intent.EXTRA_SUBJECT,"Scooter ride log");share.putExtra(Intent.EXTRA_TEXT,rideRecorder.exportCsv());startActivity(Intent.createChooser(share,"Export ride log"));}else if(which==3){Intent garage=new Intent(MainActivity.this,MaintenanceGarageActivity.class);garage.putExtra("miles",rideRecorder.lifetimeMiles());startActivity(garage);}else if(which==4){boolean enabled=!prefs.getBoolean("crash_detection",false);prefs.edit().putBoolean("crash_detection",enabled).apply();crashDetector.setEnabled(enabled);android.widget.Toast.makeText(MainActivity.this,enabled?"Crash check-in enabled":"Crash check-in disabled",android.widget.Toast.LENGTH_LONG).show();}else if(which==5)startActivity(new Intent(MainActivity.this,SafetyCircleActivity.class));else startActivity(new Intent(MainActivity.this,GroupRideActivity.class));});}
+        private void showRideHistory(){org.json.JSONArray h=rideRecorder.history();String[] rows=new String[h.length()];java.text.SimpleDateFormat f=new java.text.SimpleDateFormat("MMM d, yyyy • h:mm a",Locale.US);for(int i=0;i<h.length();i++){org.json.JSONObject r=h.optJSONObject(h.length()-1-i);rows[i]=(r==null?"Ride":f.format(new java.util.Date(r.optLong("started"))))+"\n"+rideRecorder.summary(r);}if(rows.length==0)rows=new String[]{"No completed rides yet"};new AlertDialog.Builder(MainActivity.this).setTitle("Ride history").setItems(rows,null).setPositiveButton("Done",null).show();}
+
+        private void showPolishedMenu(String title,String subtitle,String[] labels,String[] details,MenuHandler handler){
+            final int pad=UiKit.dp(MainActivity.this,16);
+            LinearLayout panel=new LinearLayout(MainActivity.this);
+            panel.setOrientation(LinearLayout.VERTICAL);
+            panel.setPadding(pad,UiKit.dp(MainActivity.this,12),pad,UiKit.dp(MainActivity.this,16));
+            panel.setBackground(UiKit.screenBackground(MainActivity.this));
+
+            String headerIcon="SETTINGS".equals(title)?"⚙":"RIDER".equals(title)?"●":
+                    title.contains("OPENNAV")?"➤":title.contains("VOICE")?"◈":"✦";
+            LinearLayout header=UiKit.header(MainActivity.this,headerIcon,title,subtitle);
+            panel.addView(header,new LinearLayout.LayoutParams(-1,UiKit.dp(MainActivity.this,76)));
+
+            LinearLayout status=new LinearLayout(MainActivity.this);
+            status.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            status.setPadding(UiKit.dp(MainActivity.this,12),0,UiKit.dp(MainActivity.this,12),0);
+            status.setBackground(UiKit.rounded(MainActivity.this,Color.rgb(5,25,32),16,Color.rgb(24,66,78)));
+            TextView statusText=UiKit.text(MainActivity.this,
+                    "●  GPS "+(lastGoodLocation==null?"SEARCHING":"LOCKED")+"     ◈  COPILOT "+
+                            (riderCopilot!=null&&riderCopilot.enabled()?"ON":"OFF"),
+                    11,lastGoodLocation==null?UiKit.AMBER:UiKit.GREEN,true);
+            statusText.setLetterSpacing(.04f);
+            status.addView(statusText,new LinearLayout.LayoutParams(-1,-1));
+            LinearLayout.LayoutParams statusParams=new LinearLayout.LayoutParams(-1,UiKit.dp(MainActivity.this,38));
+            statusParams.setMargins(0,0,0,UiKit.dp(MainActivity.this,12));
+            panel.addView(status,statusParams);
+
+            for(int i=0;i<labels.length;i++){
+                final int index=i;
+                LinearLayout row=new LinearLayout(MainActivity.this);
+                row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                row.setPadding(UiKit.dp(MainActivity.this,10),0,UiKit.dp(MainActivity.this,10),0);
+                UiKit.card(row);
+
+                TextView icon=new TextView(MainActivity.this);
+                icon.setText(menuIcon(labels[i]));
+                icon.setGravity(android.view.Gravity.CENTER);
+                icon.setTextColor(UiKit.CYAN_BRIGHT);
+                icon.setTextSize(22);
+                icon.setTypeface(android.graphics.Typeface.create("sans-serif-medium",android.graphics.Typeface.NORMAL));
+                icon.setBackground(UiKit.rounded(MainActivity.this,Color.rgb(7,45,55),16,Color.rgb(30,100,114)));
+                row.addView(icon,new LinearLayout.LayoutParams(UiKit.dp(MainActivity.this,50),UiKit.dp(MainActivity.this,50)));
+
+                LinearLayout copy=new LinearLayout(MainActivity.this);
+                copy.setOrientation(LinearLayout.VERTICAL);
+                copy.setGravity(android.view.Gravity.CENTER_VERTICAL);
+                copy.setPadding(UiKit.dp(MainActivity.this,14),UiKit.dp(MainActivity.this,7),UiKit.dp(MainActivity.this,8),UiKit.dp(MainActivity.this,7));
+                TextView name=UiKit.text(MainActivity.this,labels[i],16,UiKit.TEXT,true);
+                TextView detail=UiKit.text(MainActivity.this,details==null?"":details[i],12,UiKit.MUTED,false);
+                detail.setMaxLines(2);
+                detail.setEllipsize(TextUtils.TruncateAt.END);
+                copy.addView(name,new LinearLayout.LayoutParams(-1,UiKit.dp(MainActivity.this,25)));
+                copy.addView(detail,new LinearLayout.LayoutParams(-1,UiKit.dp(MainActivity.this,36)));
+                row.addView(copy,new LinearLayout.LayoutParams(0,-1,1));
+
+                TextView arrow=UiKit.text(MainActivity.this,"›",28,Color.rgb(117,158,170),false);
+                arrow.setGravity(android.view.Gravity.CENTER);
+                row.addView(arrow,new LinearLayout.LayoutParams(UiKit.dp(MainActivity.this,28),-1));
+                row.setOnClickListener(v->{v.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP);if(activeMenu!=null)activeMenu.dismiss();handler.select(index);});
+
+                LinearLayout.LayoutParams rowParams=new LinearLayout.LayoutParams(-1,UiKit.dp(MainActivity.this,78));
+                rowParams.setMargins(0,0,0,UiKit.dp(MainActivity.this,9));
+                panel.addView(row,rowParams);
+            }
+
+            TextView footer=UiKit.text(MainActivity.this,"VERSION 8.1  •  RIDER COPILOT",10,Color.rgb(91,132,144),true);
+            footer.setGravity(android.view.Gravity.CENTER);
+            footer.setLetterSpacing(.13f);
+            panel.addView(footer,new LinearLayout.LayoutParams(-1,UiKit.dp(MainActivity.this,32)));
+
+            ScrollView scroll=new ScrollView(MainActivity.this);
+            scroll.setFillViewport(true);
+            scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+            scroll.addView(panel);
+            activeMenu=new AlertDialog.Builder(MainActivity.this).setView(scroll).setNegativeButton("DONE",null).create();
+            activeMenu.setOnShowListener(d->{android.view.Window window=activeMenu.getWindow();if(window!=null){window.setDimAmount(.82f);window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);window.setLayout((int)(getResources().getDisplayMetrics().widthPixels*.96f),WindowManager.LayoutParams.WRAP_CONTENT);}});
+            activeMenu.show();
+        }
+
+        private String menuIcon(String label){
+            String value=label.toLowerCase(Locale.US);
+            if(value.contains("ride center"))return "◉";
+            if(value.contains("layout"))return "▦";
+            if(value.contains("appearance")||value.contains("theme"))return "✦";
+            if(value.contains("opennav")||value.contains("navigation"))return "➤";
+            if(value.contains("night")||value.contains("road")||value.contains("hazard"))return "◐";
+            if(value.contains("copilot")||value.contains("voice")||value.contains("spoken"))return "◈";
+            if(value.contains("delivery")||value.contains("dasher"))return "$";
+            if(value.contains("profile"))return "▤";
+            if(value.contains("update"))return "↻";
+            if(value.contains("identity")||value.contains("scooter"))return "♙";
+            if(value.contains("avatar"))return "◎";
+            if(value.contains("riderlink")||value.contains("map"))return "⌖";
+            if(value.contains("community")||value.contains("friends")||value.contains("clubs"))return "♟";
+            if(value.contains("notification"))return "▣";
+            if(value.contains("permission"))return "✓";
+            if(value.contains("privacy"))return "◇";
+            if(value.contains("weather"))return "☁";
+            if(value.contains("media")||value.contains("album"))return "▶";
+            if(value.contains("save"))return "↓";
+            if(value.contains("load"))return "↑";
+            return "•";
+        }
+        private AlertDialog activeMenu;
+
+        private void showUserMenu(){
+            boolean monitoring=prefs.getBoolean("notification_monitoring",false);
+            RiderLinkClient account=new RiderLinkClient(MainActivity.this);
+            boolean signedIn=account.signedIn();
+            account.shutdown();
+            String[] choices={"Rider identity & scooter","3D avatar studio","RiderLink live map",
+                    "Rider community","Notification controls","App permissions","Privacy & rider safety"};
+            String[] details={signedIn?"Signed in • profile, scooter and performance setup":"Sign in or create your RiderLink identity",
+                    "Create or update your full Avaturn character",
+                    "Nearby riders, live sharing, hazards and SOS",
+                    "Friends, clubs, direct messages and group rides",
+                    monitoring?"ACTIVE • select exactly what the HUD may process":"PRIVATE • notification monitoring is currently off",
+                    "Manage location, microphone, camera and overlays",
+                    "Foreground processing, sharing controls and SOS notice"};
+            showPolishedMenu("RIDER","Profile, community and privacy",choices,details,which->{
+                if(which==0)openRiderProfile();
+                else if(which==1)openAvatarCreator();
+                else if(which==2)startActivity(new Intent(MainActivity.this,RiderLinkActivity.class));
+                else if(which==3)startActivity(new Intent(MainActivity.this,RiderLinkSocialActivity.class));
+                else if(which==4)showNotificationControls();
+                else if(which==5){Intent permissions=new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName()));startActivity(permissions);}
+                else new AlertDialog.Builder(MainActivity.this).setTitle("Privacy & rider safety").setMessage("Notification monitoring is off by default and stops whenever the app leaves the foreground. Message and call details remain on this phone. Live RiderLink location remains off until you enable it. RiderLink SOS does not contact 911 or emergency services.").setPositiveButton("Done",null).show();
+            });
+        }
+        private void showNotificationControls(){
+            LinearLayout panel=new LinearLayout(MainActivity.this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(UiKit.dp(MainActivity.this,18),UiKit.dp(MainActivity.this,8),UiKit.dp(MainActivity.this,18),UiKit.dp(MainActivity.this,10));panel.setBackgroundColor(UiKit.SURFACE);
+            panel.addView(settingsAction("Private by default","The listener ignores and clears notification content whenever the master switch is off."));
+            Switch master=settingsSwitch("Notification monitoring",prefs.getBoolean("notification_monitoring",false));Switch media=settingsSwitch("Media player controls",prefs.getBoolean("monitor_media",true));Switch messages=settingsSwitch("Message counter & details",prefs.getBoolean("monitor_messages",true));Switch calls=settingsSwitch("Call counter & caller",prefs.getBoolean("monitor_calls",true));Switch delivery=settingsSwitch("Delivery offer extraction",prefs.getBoolean("monitor_delivery",true));
+            panel.addView(master);panel.addView(media);panel.addView(messages);panel.addView(calls);panel.addView(delivery);TextView access=settingsAction("Android notification access",hasMediaAccess()?"Permission granted • tap to review or revoke":"Permission not granted • tap to open Android settings");panel.addView(access);
+            AlertDialog dialog=new AlertDialog.Builder(MainActivity.this).setTitle("Notification privacy").setView(panel).setPositiveButton("Done",null).setNegativeButton("Back",(d,w)->showUserMenu()).create();dialog.show();
+            View.OnClickListener save=v->{boolean enabled=master.isChecked();prefs.edit().putBoolean("notification_monitoring",enabled).putBoolean("monitor_media",media.isChecked()).putBoolean("monitor_messages",messages.isChecked()).putBoolean("monitor_calls",calls.isChecked()).putBoolean("monitor_delivery",delivery.isChecked()).apply();media.setEnabled(enabled);messages.setEnabled(enabled);calls.setEnabled(enabled);delivery.setEnabled(enabled);sendBroadcast(new Intent(MediaAccessService.ACTION_MONITORING_CHANGED).setPackage(getPackageName()));if(enabled){if(!hasMediaAccess())openMediaAccessSettings();else if(Build.VERSION.SDK_INT>=24)android.service.notification.NotificationListenerService.requestRebind(mediaListenerComponent());}else{prefs.edit().remove("hud_title").remove("hud_body").remove("hud_type").putInt("hud_message_count",0).putInt("hud_call_count",0).apply();}refreshMedia();invalidate();};
+            master.setOnClickListener(save);media.setOnClickListener(save);messages.setOnClickListener(save);calls.setOnClickListener(save);delivery.setOnClickListener(save);access.setOnClickListener(v->openMediaAccessSettings());media.setEnabled(master.isChecked());messages.setEnabled(master.isChecked());calls.setEnabled(master.isChecked());delivery.setEnabled(master.isChecked());
+        }
+        private void openRiderProfile(){RiderLinkClient account=new RiderLinkClient(MainActivity.this);boolean signed=account.signedIn();account.shutdown();Intent profile=new Intent(MainActivity.this,RiderLinkActivity.class);if(signed)profile.putExtra("open_profile",true);startActivity(profile);}
+        private void openAvatarCreator(){RiderLinkClient account=new RiderLinkClient(MainActivity.this);boolean signed=account.signedIn();account.shutdown();if(signed)startActivity(new Intent(MainActivity.this,AvaturnActivity.class));else openRiderProfile();}
+
+        private void showDasherSettings() {
+            float density = getResources().getDisplayMetrics().density;
+            LinearLayout panel = new LinearLayout(MainActivity.this);
+            panel.setOrientation(LinearLayout.VERTICAL);
+            panel.setPadding(Math.round(20 * density), Math.round(10 * density), Math.round(20 * density), Math.round(8 * density));
+            panel.setBackgroundColor(Color.rgb(9, 12, 15));
+            Switch enabled = settingsSwitch("Enable Dasher Mode", prefs.getBoolean("dasher_mode", false));
+            panel.addView(enabled);
+            Switch shift = settingsSwitch("Delivery shift / mileage logging", deliveryCockpit.shiftActive());
+            panel.addView(shift);
+            Switch voice = settingsSwitch("Speak incoming offers", prefs.getBoolean("dasher_voice", true));
+            panel.addView(voice);
+            TextView stats = settingsAction("Today's delivery cockpit",
+                    String.format(Locale.US, "%.1f mi • %d offers • $%.2f offered", deliveryCockpit.dailyMiles(),
+                            deliveryCockpit.dailyOffers(), deliveryCockpit.dailyOfferValue()));
+            panel.addView(stats);
+            TextView permission = settingsAction("Notification access",
+                    hasMediaAccess() ? "Granted" : "Tap here to grant access");
+            panel.addView(permission);
+            boolean screenCapture=android.provider.Settings.Secure.getString(getContentResolver(),android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)!=null&&android.provider.Settings.Secure.getString(getContentResolver(),android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).contains(getPackageName()+"/"+DasherAccessibilityService.class.getName());
+            TextView deepCapture=settingsAction("Full offer-screen capture",screenCapture?"Enabled • reads only the DoorDash Dasher screen during an active shift":"Optional • tap to enable in Android Accessibility settings");panel.addView(deepCapture);
+            TextView open = settingsAction("Open DoorDash Dasher", "Accept and manage deliveries securely");
+            panel.addView(open);
+            TextView privacy = settingsAction("Privacy", "Order notifications stay only on this phone");
+            privacy.setTextColor(Color.rgb(160, 185, 195)); panel.addView(privacy);
+            new AlertDialog.Builder(MainActivity.this).setTitle("Delivery / Dasher mode")
+                    .setView(panel).setPositiveButton("Done", null)
+                    .setNegativeButton("Back", (dialog, which) -> showDashboardCustomizer()).show();
+            enabled.setOnCheckedChangeListener((button, checked) -> {
+                prefs.edit().putBoolean("dasher_mode", checked).apply();
+                if (checked && !hasMediaAccess()) openMediaAccessSettings();
+                invalidate();
+            });
+            shift.setOnCheckedChangeListener((button, checked) -> { deliveryCockpit.setShiftActive(checked); invalidate(); });
+            voice.setOnCheckedChangeListener((button, checked) -> prefs.edit().putBoolean("dasher_voice", checked).apply());
+            permission.setOnClickListener(v -> openMediaAccessSettings());
+            deepCapture.setOnClickListener(v->{prefs.edit().putBoolean("dasher_screen_capture",true).apply();startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));});
+            open.setOnClickListener(v -> openDasherApp());
+        }
+
+        private void openDasherApp() {
+            String packageName = prefs.getString("dasher_package", "com.doordash.driverapp");
+            Intent launch = getPackageManager().getLaunchIntentForPackage(packageName);
+            if (launch != null) startActivity(launch);
+            else android.widget.Toast.makeText(MainActivity.this, "Install or open the DoorDash Dasher app first", android.widget.Toast.LENGTH_LONG).show();
+        }
+
+        private void drawDasherCard(Canvas c, float w, float h, float scale) {
+            if (!prefs.getBoolean("dasher_mode", false)) return;
+            String title = prefs.getString("dasher_title", "");
+            String body = prefs.getString("dasher_body", "");
+            float offerPay = prefs.getFloat("dasher_offer_pay", 0f);
+            float offerMiles = prefs.getFloat("dasher_offer_miles", 0f);
+            float perMile = prefs.getFloat("dasher_offer_per_mile", 0f);
+            float tip = prefs.getFloat("dasher_offer_tip", 0f);
+            int items = prefs.getInt("dasher_offer_items", 0), minutes = prefs.getInt("dasher_offer_minutes", 0);
+            String restaurant = prefs.getString("dasher_restaurant", title);
+            String pickup = prefs.getString("dasher_pickup", ""), dropoff = prefs.getString("dasher_dropoff", "");
+            String captureSource=prefs.getString("dasher_capture_source","notification"),missing=prefs.getString("dasher_missing_fields","");
+            long age = System.currentTimeMillis() - prefs.getLong("dasher_time", 0L);
+            boolean active = (!TextUtils.isEmpty(title) || !TextUtils.isEmpty(body)) && age < 30L * 60L * 1000L;
+            dasherCard.set(w * .025f, h * .245f, w * .975f, h * .405f);
+            paint.setColor(active ? Color.argb(242, 155, 12, 25) : Color.argb(225, 14, 20, 25));
+            c.drawRoundRect(dasherCard, 18f * scale, 18f * scale, paint);
+            paint.setStyle(Paint.Style.STROKE); paint.setStrokeWidth(2f * scale);
+            paint.setColor(active ? Color.rgb(255, 70, 82) : Color.rgb(85, 105, 115));
+            c.drawRoundRect(dasherCard, 18f * scale, 18f * scale, paint); paint.setStyle(Paint.Style.FILL);
             text(c, "DASHER COCKPIT", w * .055f, h * .270f, 12f * scale, active ? Color.WHITE : Color.rgb(165,180,188), Paint.Align.LEFT, true);
             text(c, deliveryCockpit.shiftActive() ? "SHIFT ON" : "SHIFT OFF", w * .945f, h * .270f, 11f * scale,
                     deliveryCockpit.shiftActive() ? Color.rgb(112,255,145) : Color.rgb(190,195,198), Paint.Align.RIGHT, true);
