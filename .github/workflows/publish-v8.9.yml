@@ -1,0 +1,81 @@
+name: Publish v8.9.0 RiderLink Events release
+
+on:
+  push:
+    branches: [v8-rider-copilot]
+    paths: [.github/workflows/publish-v8.9.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-v8.9.0
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+      KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Restore permanent signing key
+        run: |
+          test -n "$KEY_PASSWORD"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+            -in signing/v8-release-key.p12.enc -out "$KEYSTORE_PATH" -pass env:KEY_PASSWORD
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build signed APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+          ANDROID_KEY_ALIAS: scooter-v8
+          ANDROID_KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify permanent signing identity and publish
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/Scooter-Speedometer-v8.9.0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Scooter-Speedometer-v8.9.0.apk > dist/signature.txt
+          cat dist/signature.txt
+          expected=$(sed 's/.*SHA256: //' signing/v8-release-fingerprint.txt | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+          actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' dist/signature.txt | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+          test -n "$expected"
+          test "$actual" = "$expected"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Scooter-Speedometer-v8.9.0.apk > dist/package.txt
+          grep -q "package: name='com.stankhouse.scooterspeedometer' versionCode='94' versionName='8.9.0'" dist/package.txt
+          (cd dist && sha256sum Scooter-Speedometer-v8.9.0.apk > Scooter-Speedometer-v8.9.0.apk.sha256)
+          gh release create v8.9.0 \
+            dist/Scooter-Speedometer-v8.9.0.apk dist/Scooter-Speedometer-v8.9.0.apk.sha256 \
+            supabase/riderlink_events.sql \
+            --target "$GITHUB_SHA" --title "Scooter Speedometer v8.9 • RiderLink+ Events" \
+            --notes-file - <<'NOTES'
+          - Local public event board with town/city filtering
+          - Public and invite-only hosted events
+          - Invite friends or an exact RiderLink username to either event type
+          - Going, Interested and Decline RSVPs
+          - Host editing, cancellation and guest lists
+          - Existing RiderLink+ and developer entitlements enable hosting; browsing and RSVPs remain free
+          - Invitations appear in Events; refresh to see invitations, changes and cancellations (no push notifications yet)
+          - Includes the existing Convoy, Safety Circle and other v8.8 features
+          - Signed with the permanent v8 key; signing certificate verified against the stored fingerprint
+
+          Open RiderLink → Social → Events.
+          Backend setup: run the attached riderlink_events.sql in the existing Supabase project after riderlink.sql and riderlink_membership_v86.sql. This release does not apply the database migration automatically.
+          Android 6.0+ • versionCode 94
+          NOTES
+      - name: Remove plaintext signing key
+        if: always()
+        run: rm -f "$KEYSTORE_PATH"

@@ -16,7 +16,7 @@ The event tables have RLS enabled and no direct client grants. Checked security-
 
 ## Build and signing
 
-This change uses the existing Java 17 / Gradle 8.9 / Android SDK 35 build configuration and application ID. The permanent encrypted v8 signing key and existing release workflow remain intact. The feature CI builds the separate `.v8test` debug application; it is not a production upgrade. A production release must use the existing `V8_SIGNING_PASSWORD` signing setup and a versionCode above 93. No replacement signing key is generated.
+This change uses the existing Java 17 / Gradle 8.9 / Android SDK 35 build configuration and application ID. The permanent encrypted v8 signing key and existing release workflow remain intact. The feature CI builds the separate `.v8test` debug application; it is not a production upgrade. The v8.9.0 production release uses versionCode 94 and the existing `V8_SIGNING_PASSWORD` signing setup. No replacement signing key is generated.
 
 ## Validation
 
