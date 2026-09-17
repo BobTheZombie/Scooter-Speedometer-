@@ -81,6 +81,7 @@
             android:exported="false" />
         <activity android:name=".MaintenanceGarageActivity" android:hardwareAccelerated="true" android:screenOrientation="sensor" android:exported="false" />
         <activity android:name=".GroupRideActivity" android:hardwareAccelerated="true" android:screenOrientation="sensor" android:exported="false" />
+        <activity android:name=".SafetyCircleActivity" android:hardwareAccelerated="true" android:screenOrientation="sensor" android:exported="false" />
         <service
             android:name=".MediaAccessService"
             android:exported="true"
@@ -104,5 +105,6 @@
             android:exported="false"
             android:foregroundServiceType="location"
             android:stopWithTask="false" />
+        <service android:name=".SafetyTripService" android:exported="false" android:foregroundServiceType="location" android:stopWithTask="false" />
     </application>
 </manifest>

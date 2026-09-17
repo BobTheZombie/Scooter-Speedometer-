@@ -200,6 +200,16 @@ public class RiderLinkClient {
     public void sendConvoyAlert(long rideId,String type,Double lat,Double lon,Callback c){try{JSONObject b=new JSONObject().put("p_ride",rideId).put("p_type",type).put("p_lat",lat==null?JSONObject.NULL:lat).put("p_lon",lon==null?JSONObject.NULL:lon);rest("POST","/rest/v1/rpc/send_convoy_alert",b.toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
     public void leaveConvoy(long rideId,Callback c){try{rest("POST","/rest/v1/rpc/leave_convoy",new JSONObject().put("p_ride",rideId).toString(),"return=minimal",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
     public void stopGroupRideLocation(long rideId,Callback c){rest("DELETE","/rest/v1/group_ride_presence?ride_id=eq."+rideId+"&user_id=eq."+userId(),null,"return=minimal",c);}
+    public void safetyCircle(Callback c){rest("POST","/rest/v1/rpc/my_safety_circle","{}","return=representation",c);}
+    public void addSafetyContact(String username,Callback c){try{rest("POST","/rest/v1/rpc/add_safety_contact",new JSONObject().put("p_username",username).toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    public void acceptSafetyContact(long relationId,Callback c){try{rest("POST","/rest/v1/rpc/accept_safety_contact",new JSONObject().put("p_relation",relationId).toString(),"return=minimal",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    public void removeSafetyContact(String contactId,Callback c){try{rest("POST","/rest/v1/rpc/remove_safety_contact",new JSONObject().put("p_contact",contactId).toString(),"return=minimal",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    public void startSafetyTrip(int checkinMinutes,Callback c){try{rest("POST","/rest/v1/rpc/start_safety_trip",new JSONObject().put("p_checkin_minutes",checkinMinutes).toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    public void updateSafetyTrip(double lat,double lon,float accuracy,float speed,Callback c){try{rest("POST","/rest/v1/rpc/update_safety_trip",new JSONObject().put("p_lat",lat).put("p_lon",lon).put("p_accuracy",accuracy).put("p_speed_mps",speed).toString(),"return=minimal",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
+    public void checkInSafetyTrip(Callback c){rest("POST","/rest/v1/rpc/check_in_safety_trip","{}","return=representation",c);}
+    public void endSafetyTrip(Callback c){rest("POST","/rest/v1/rpc/end_safety_trip","{}","return=minimal",c);}
+    public void safetyStatus(Callback c){rest("POST","/rest/v1/rpc/my_safety_status","{}","return=representation",c);}
+    public void triggerSafetyEvent(String type,String note,Double lat,Double lon,Callback c){try{rest("POST","/rest/v1/rpc/trigger_safety_event",new JSONObject().put("p_type",type).put("p_note",note).put("p_lat",lat==null?JSONObject.NULL:lat).put("p_lon",lon==null?JSONObject.NULL:lon).toString(),"return=representation",c);}catch(Exception e){c.complete(false,e.getMessage(),"");}}
     public void signOut() { prefs.edit().clear().apply(); }
     public void shutdown() { worker.shutdownNow(); }
 
