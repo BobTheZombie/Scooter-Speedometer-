@@ -82,6 +82,10 @@
         <activity android:name=".MaintenanceGarageActivity" android:hardwareAccelerated="true" android:screenOrientation="sensor" android:exported="false" />
         <activity android:name=".GroupRideActivity" android:hardwareAccelerated="true" android:screenOrientation="sensor" android:exported="false" />
         <activity android:name=".RiderEventsActivity" android:exported="false" />
+        <activity android:name=".RideNightActivity" android:exported="false" />
+        <activity android:name=".RiderIdentityActivity" android:exported="false" />
+        <activity android:name=".RescueNetworkActivity" android:exported="false" />
+        <activity android:name=".RoadIntelActivity" android:exported="false" />
         <activity android:name=".SafetyCircleActivity" android:hardwareAccelerated="true" android:screenOrientation="sensor" android:exported="false" />
         <service
             android:name=".MediaAccessService"

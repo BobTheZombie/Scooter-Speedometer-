@@ -60,6 +60,10 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private String routeSummary="";
     private CopilotAlertQueue alerts;
     private RouteWeatherAdvisor routeWeather;
+    private RiderLinkClient riderLink;
+    private final List<RoadIntelPoint> roadIntelPoints=new ArrayList<>();
+    private final Map<Long,Long> roadIntelWarnings=new HashMap<>();
+    private long lastRoadIntelRefresh;
     private long routeWeatherLastCheck;
     private double routeDurationSeconds;
     private int stepIndex, lastSpokenStep = -1;
@@ -95,6 +99,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         offlineRegions=new OfflineRegionManager(this);
         alerts = CopilotAlertQueue.get(this);
         routeWeather = new RouteWeatherAdvisor(this);
+        riderLink = new RiderLinkClient(this);
         FrameLayout root = new FrameLayout(this);
         map = new WebView(this);
         map.setLayerType(View.LAYER_TYPE_HARDWARE, null);
@@ -139,7 +144,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     }
     @Override public void onLocationChanged(Location location) {
         Location smooth=filterLocation(location);if(smooth==null)return;currentLocation = smooth; updateMapLocation(smooth);
-        if(guidanceActive){checkCameraWarnings(smooth);checkPoliceWarnings(smooth);}
+        if(guidanceActive){checkCameraWarnings(smooth);checkPoliceWarnings(smooth);refreshRoadIntel(smooth);checkRoadIntelWarnings(smooth);}
         if (!hasDestination && destinationQuery != null) geocodeAndRoute();
         else if (hasDestination&&guidanceActive) updateGuidance(smooth);
     }
@@ -241,6 +246,8 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     }
     private void applyPoliceData(String body){policePoints.clear();try{JSONArray list=new JSONArray(body);for(int i=0;i<list.length();i++){JSONObject p=list.getJSONObject(i);policePoints.add(new PolicePoint(p.optLong("id"),p.getDouble("latitude"),p.getDouble("longitude")));}if(currentLocation!=null)checkPoliceWarnings(currentLocation);}catch(Exception ignored){}}
     private void checkPoliceWarnings(Location location){if(policePoints.isEmpty()||location.getSpeed()<1.5f)return;long now=System.currentTimeMillis();if(now-lastPoliceWarning<30000L)return;float heading=location.hasBearing()?location.getBearing():routeHeading(location);PolicePoint best=null;float bestDistance=Float.MAX_VALUE;for(PolicePoint point:policePoints){float[] d=new float[2];Location.distanceBetween(location.getLatitude(),location.getLongitude(),point.lat,point.lon,d);if(d[0]>1200f||d[0]>=bestDistance)continue;float delta=Math.abs(((d[1]-heading+540f)%360f)-180f);if(delta>65f)continue;if(!routePoints.isEmpty()&&distanceToRouteMeters(new CameraPoint(point.lat,point.lon))>100d)continue;Long warned=policeWarningTimes.get(point.id);if(warned!=null&&now-warned<30L*60L*1000L)continue;best=point;bestDistance=d[0];}if(best==null)return;policeWarningTimes.put(best.id,now);lastPoliceWarning=now;alerts.enqueue(CopilotAlertQueue.HAZARD,"police:"+best.id,"Police vehicle ahead",30L*60L*1000L);if(mapReady)map.evaluateJavascript(String.format(Locale.US,"highlightPolice(%.7f,%.7f)",best.lat,best.lon),null);}
+    private void refreshRoadIntel(Location location){long now=System.currentTimeMillis();if(!riderLink.signedIn()||now-lastRoadIntelRefresh<60000L)return;lastRoadIntelRefresh=now;try{JSONObject args=new JSONObject().put("p_lat",location.getLatitude()).put("p_lon",location.getLongitude()).put("p_radius_km",15);riderLink.eventRpc("nearby_road_intel",args,(ok,m,body)->{if(!ok){lastRoadIntelRefresh=0;return;}roadIntelPoints.clear();try{JSONArray list=new JSONArray(body);for(int i=0;i<list.length();i++){JSONObject r=list.getJSONObject(i);roadIntelPoints.add(new RoadIntelPoint(r.optLong("id"),r.optString("report_type","hazard"),r.optInt("severity",1),r.getDouble("latitude"),r.getDouble("longitude")));}checkRoadIntelWarnings(location);}catch(Exception ignored){}});}catch(Exception ignored){}}
+    private void checkRoadIntelWarnings(Location location){if(roadIntelPoints.isEmpty()||location.getSpeed()<1.5f)return;long now=System.currentTimeMillis();float heading=location.hasBearing()?location.getBearing():routeHeading(location);RoadIntelPoint best=null;float nearest=Float.MAX_VALUE;for(RoadIntelPoint point:roadIntelPoints){float[] d=new float[2];Location.distanceBetween(location.getLatitude(),location.getLongitude(),point.lat,point.lon,d);if(d[0]>650f||d[0]>=nearest)continue;float delta=Math.abs(((d[1]-heading+540f)%360f)-180f);if(delta>70f)continue;if(!routePoints.isEmpty()&&distanceToRouteMeters(new CameraPoint(point.lat,point.lon))>110d)continue;Long warned=roadIntelWarnings.get(point.id);if(warned!=null&&now-warned<30L*60L*1000L)continue;best=point;nearest=d[0];}if(best==null)return;roadIntelWarnings.put(best.id,now);String condition=best.type.replace('_',' ');String warning=(best.severity>=3?"Dangerous ":best.severity==2?"Caution, ":"")+condition+" reported ahead";alerts.enqueue(CopilotAlertQueue.HAZARD,"road-intel:"+best.id,warning,30L*60L*1000L);}
     private float routeHeading(Location location){if(stepIndex<steps.size()){RouteStep s=steps.get(stepIndex);float[] d=new float[2];Location.distanceBetween(location.getLatitude(),location.getLongitude(),s.latitude,s.longitude,d);return d[1];}return 0f;}
     private double distanceToRouteMeters(CameraPoint c){double best=Double.MAX_VALUE;for(int i=1;i<routePoints.size();i++){best=Math.min(best,segmentDistanceMeters(c,routePoints.get(i-1),routePoints.get(i)));if(best<=20d)return best;}return best;}
     private double segmentDistanceMeters(CameraPoint p,RoutePoint a,RoutePoint b){double scale=Math.cos(Math.toRadians(p.lat));double ax=(a.lon-p.lon)*111320d*scale,ay=(a.lat-p.lat)*111320d,bx=(b.lon-p.lon)*111320d*scale,by=(b.lat-p.lat)*111320d;double vx=bx-ax,vy=by-ay,den=vx*vx+vy*vy,t=den==0?0:Math.max(0,Math.min(1,-(ax*vx+ay*vy)/den));return Math.hypot(ax+t*vx,ay+t*vy);}
@@ -264,7 +271,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private String read(HttpURLConnection connection) throws Exception { BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream())); StringBuilder out = new StringBuilder(); String line; while ((line = reader.readLine()) != null) out.append(line); reader.close(); return out.toString(); }
     private void showError(String message) { instruction.setText(message); new AlertDialog.Builder(this).setTitle("Navigation").setMessage(message).setPositiveButton("Close", (d,w) -> finish()).show(); }
     @Override public void onWindowFocusChanged(boolean focus) { super.onWindowFocusChanged(focus); if (focus) Fullscreen.apply(this); }
-    @Override protected void onDestroy() { main.removeCallbacks(routeRecovery);try { locationManager.removeUpdates(this); } catch (Exception ignored) {} network.shutdownNow();if(flockCameras!=null)flockCameras.shutdown();if(policeProvider!=null)policeProvider.shutdown();if(offlineRegions!=null)offlineRegions.shutdown();if(routeWeather!=null)routeWeather.shutdown();map.destroy();super.onDestroy(); }
+    @Override protected void onDestroy() { main.removeCallbacks(routeRecovery);try { locationManager.removeUpdates(this); } catch (Exception ignored) {} network.shutdownNow();if(flockCameras!=null)flockCameras.shutdown();if(policeProvider!=null)policeProvider.shutdown();if(offlineRegions!=null)offlineRegions.shutdown();if(routeWeather!=null)routeWeather.shutdown();if(riderLink!=null)riderLink.shutdown();map.destroy();super.onDestroy(); }
     @Override public void onProviderEnabled(String provider) { }
     @Override public void onProviderDisabled(String provider) { }
     @Override public void onStatusChanged(String provider, int status, Bundle extras) { }
@@ -272,5 +279,6 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private static class RoutePoint{final double lat,lon;RoutePoint(double a,double o){lat=a;lon=o;}}
     private static class CameraPoint{final double lat,lon;CameraPoint(double a,double o){lat=a;lon=o;}String key(){return String.format(Locale.US,"%.5f,%.5f",lat,lon);}}
     private static class PolicePoint{final long id;final double lat,lon;PolicePoint(long i,double a,double o){id=i;lat=a;lon=o;}}
+    private static class RoadIntelPoint{final long id;final String type;final int severity;final double lat,lon;RoadIntelPoint(long i,String t,int s,double a,double o){id=i;type=t;severity=s;lat=a;lon=o;}}
     private static class SnappedPoint{final double lat,lon;final float bearing;SnappedPoint(double a,double o,float b){lat=a;lon=o;bearing=b;}}
 }

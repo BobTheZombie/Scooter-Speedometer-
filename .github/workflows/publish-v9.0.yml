@@ -1,0 +1,83 @@
+name: Publish v9.0.0 RiderLink Ride Nights release
+
+on:
+  push:
+    branches: [v8-rider-copilot]
+    paths: [.github/workflows/publish-v9.0.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-v9.0.0
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+      KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Restore permanent signing key
+        run: |
+          test -n "$KEY_PASSWORD"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+            -in signing/v8-release-key.p12.enc -out "$KEYSTORE_PATH" -pass env:KEY_PASSWORD
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build signed APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+          ANDROID_KEY_ALIAS: scooter-v8
+          ANDROID_KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify permanent identity and publish
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/Scooter-Speedometer-v9.0.0.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Scooter-Speedometer-v9.0.0.apk > dist/signature.txt
+          cat dist/signature.txt
+          expected=$(sed 's/.*SHA256: //' signing/v8-release-fingerprint.txt | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+          actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' dist/signature.txt | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+          test -n "$expected"
+          test "$actual" = "$expected"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Scooter-Speedometer-v9.0.0.apk > dist/package.txt
+          grep -q "package: name='com.stankhouse.scooterspeedometer' versionCode='100' versionName='9.0.0'" dist/package.txt
+          (cd dist && sha256sum Scooter-Speedometer-v9.0.0.apk > Scooter-Speedometer-v9.0.0.apk.sha256)
+          gh release create v9.0.0 \
+            dist/Scooter-Speedometer-v9.0.0.apk dist/Scooter-Speedometer-v9.0.0.apk.sha256 \
+            supabase/riderlink_ride_nights_v90.sql \
+            --target "$GITHUB_SHA" --title "Scooter Speedometer v9.0 • RiderLink Ride Nights" \
+            --notes-file - <<'NOTES'
+          - Ride Night Hub connecting Events, Convoy, navigation and verified check-ins
+          - Smart Event Discovery ranked by city, friend hosts, attendance and timing
+          - Activity-based Rider Reputation without public reviews or star ratings
+          - Rotating QR and fallback-code Ride Pass
+          - Route proposals, one-vote-per-rider voting and host-locked final routes
+          - Access-controlled Event Chat with host announcements
+          - Two-hour Mechanical Rescue Network requests and verified roadside help
+          - Community-confirmed Road Condition Intelligence with spoken OpenNAV+ warnings
+          - Host-controlled Emergency Meet-Points with event-wide announcement and navigation
+          - Existing RiderLink+ developer and membership entitlements preserved
+          - Signed with the permanent v8 identity and verified before publication
+
+          Backend setup: run the attached riderlink_ride_nights_v90.sql after riderlink_events.sql and the earlier RiderLink migrations.
+          Rescue Network does not call 911 or guarantee a response.
+          Android 6.0+ • versionCode 100
+          NOTES
+      - name: Remove plaintext signing key
+        if: always()
+        run: rm -f "$KEYSTORE_PATH"
