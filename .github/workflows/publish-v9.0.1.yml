@@ -1,0 +1,76 @@
+name: Publish v9.0.1 RiderLink layout fix
+
+on:
+  push:
+    branches: [v8-rider-copilot]
+    paths: [.github/workflows/publish-v9.0.1.yml]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-v9.0.1
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+      KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Restore permanent signing key
+        run: |
+          test -n "$KEY_PASSWORD"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 \
+            -in signing/v8-release-key.p12.enc -out "$KEYSTORE_PATH" -pass env:KEY_PASSWORD
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build signed APK
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/v8-release-key.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+          ANDROID_KEY_ALIAS: scooter-v8
+          ANDROID_KEY_PASSWORD: ${{ secrets.V8_SIGNING_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Verify permanent identity and publish
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk dist/Scooter-Speedometer-v9.0.1.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs dist/Scooter-Speedometer-v9.0.1.apk > dist/signature.txt
+          cat dist/signature.txt
+          expected=$(sed 's/.*SHA256: //' signing/v8-release-fingerprint.txt | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+          actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' dist/signature.txt | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
+          test -n "$expected"
+          test "$actual" = "$expected"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging dist/Scooter-Speedometer-v9.0.1.apk > dist/package.txt
+          grep -q "package: name='com.stankhouse.scooterspeedometer' versionCode='101' versionName='9.0.1'" dist/package.txt
+          (cd dist && sha256sum Scooter-Speedometer-v9.0.1.apk > Scooter-Speedometer-v9.0.1.apk.sha256)
+          gh release create v9.0.1 \
+            dist/Scooter-Speedometer-v9.0.1.apk dist/Scooter-Speedometer-v9.0.1.apk.sha256 \
+            supabase/riderlink_ride_nights_v90.sql \
+            --target "$GITHUB_SHA" --title "Scooter Speedometer v9.0.1 • RiderLink UI Fix" \
+            --notes-file - <<'NOTES'
+          - Fixes clipped RiderLink Events feature-button labels on phone-width displays
+          - Replaces the cramped four-across strip with a readable two-by-two feature grid
+          - Uses full Rescue Network and Road Intelligence labels
+          - All RiderLink Ride Nights v9.0 functionality remains included
+          - Signed with the permanent v8 identity and verified before publication
+
+          Backend setup: existing v9.0 installations require no new SQL migration. The v9.0 SQL is attached for fresh installations.
+          Android 6.0+ • versionCode 101
+          NOTES
+      - name: Remove plaintext signing key
+        if: always()
+        run: rm -f "$KEYSTORE_PATH"

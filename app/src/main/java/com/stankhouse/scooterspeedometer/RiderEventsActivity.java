@@ -55,11 +55,15 @@ public final class RiderEventsActivity extends Activity {
         actions.addView(button("Refresh / filter", () -> load(true)),new LinearLayout.LayoutParams(0,dp(50),1));
         actions.addView(button("+ Host event", this::checkHosting),new LinearLayout.LayoutParams(0,dp(50),1));
         root.addView(actions);
-        LinearLayout tools = new LinearLayout(this);
-        tools.addView(button("Smart discovery", this::discover),new LinearLayout.LayoutParams(0,dp(50),1));
-        tools.addView(button("Ride Pass", () -> startActivity(new android.content.Intent(this,RiderIdentityActivity.class))),new LinearLayout.LayoutParams(0,dp(50),1));
-        tools.addView(button("Rescue", () -> startActivity(new android.content.Intent(this,RescueNetworkActivity.class))),new LinearLayout.LayoutParams(0,dp(50),1));
-        tools.addView(button("Road Intel", () -> startActivity(new android.content.Intent(this,RoadIntelActivity.class))),new LinearLayout.LayoutParams(0,dp(50),1));
+        LinearLayout tools = column();
+        LinearLayout toolRowOne = new LinearLayout(this);
+        addTool(toolRowOne,"Smart discovery",this::discover);
+        addTool(toolRowOne,"Ride Pass",() -> startActivity(new android.content.Intent(this,RiderIdentityActivity.class)));
+        tools.addView(toolRowOne);
+        LinearLayout toolRowTwo = new LinearLayout(this);
+        addTool(toolRowTwo,"Rescue network",() -> startActivity(new android.content.Intent(this,RescueNetworkActivity.class)));
+        addTool(toolRowTwo,"Road intelligence",() -> startActivity(new android.content.Intent(this,RoadIntelActivity.class)));
+        tools.addView(toolRowTwo);
         root.addView(tools);
         status=UiKit.text(this,"",13,UiKit.CYAN,true); root.addView(status);
         cards=column();
@@ -280,6 +284,7 @@ public final class RiderEventsActivity extends Activity {
     private LinearLayout column(){LinearLayout v=new LinearLayout(this);v.setOrientation(LinearLayout.VERTICAL);return v;}
     private EditText field(String hint,int length){EditText e=new EditText(this);UiKit.field(e);e.setHint(hint);e.setFilters(new InputFilter[]{new InputFilter.LengthFilter(length)});return e;}
     private Button button(String label,Runnable action){Button b=UiKit.iconButton(this,"",label,UiKit.SURFACE_ACTIVE);b.setOnClickListener(v->action.run());return b;}
+    private void addTool(LinearLayout row,String label,Runnable action){Button b=button(label,action);b.setTextSize(12);b.setPadding(dp(4),0,dp(4),0);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(50),1);p.setMargins(dp(2),dp(2),dp(2),dp(2));row.addView(b,p);}
     private int dp(int value){return UiKit.dp(this,value);}
     private void toast(String message){Toast.makeText(this,message,Toast.LENGTH_LONG).show();}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putString("mode",mode);state.putString("city",city.getText().toString());}
