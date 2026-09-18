@@ -55,6 +55,12 @@ public final class RiderEventsActivity extends Activity {
         actions.addView(button("Refresh / filter", () -> load(true)),new LinearLayout.LayoutParams(0,dp(50),1));
         actions.addView(button("+ Host event", this::checkHosting),new LinearLayout.LayoutParams(0,dp(50),1));
         root.addView(actions);
+        LinearLayout tools = new LinearLayout(this);
+        tools.addView(button("Smart discovery", this::discover),new LinearLayout.LayoutParams(0,dp(50),1));
+        tools.addView(button("Ride Pass", () -> startActivity(new android.content.Intent(this,RiderIdentityActivity.class))),new LinearLayout.LayoutParams(0,dp(50),1));
+        tools.addView(button("Rescue", () -> startActivity(new android.content.Intent(this,RescueNetworkActivity.class))),new LinearLayout.LayoutParams(0,dp(50),1));
+        tools.addView(button("Road Intel", () -> startActivity(new android.content.Intent(this,RoadIntelActivity.class))),new LinearLayout.LayoutParams(0,dp(50),1));
+        root.addView(tools);
         status=UiKit.text(this,"",13,UiKit.CYAN,true); root.addView(status);
         cards=column();
         ScrollView scroll=new ScrollView(this); scroll.addView(cards);
@@ -114,6 +120,15 @@ public final class RiderEventsActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.addView(content);
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle(event.optString("title")).setView(scroll).setNegativeButton("Close",null).create();
         long id=event.optLong("id");
+        content.addView(button("Open Ride Night Hub", () -> {
+            android.content.Intent hub=new android.content.Intent(this,RideNightActivity.class);
+            hub.putExtra("event_id",id).putExtra("event_title",event.optString("title"));
+            dialog.dismiss();startActivity(hub);
+        }));
+        content.addView(button("Navigate to meetup", () -> {
+            android.content.Intent nav=new android.content.Intent(this,BuiltInNavigationActivity.class);
+            nav.putExtra("destination",event.optString("meeting_place")+", "+event.optString("city"));startActivity(nav);
+        }));
         if (host) {
             if (!closed) {
                 content.addView(button("Edit event", () -> {dialog.dismiss();edit(event);}));
@@ -150,6 +165,16 @@ public final class RiderEventsActivity extends Activity {
             else new AlertDialog.Builder(this).setTitle("Host with RiderLink+")
                 .setMessage("Plus members can host public or invite-only events. Browsing, invitations and RSVPs are free.")
                 .setPositiveButton("OK",null).show();
+        });
+    }
+
+    private void discover() {
+        mode="discover";offset=0;cards.removeAllViews();more.setVisibility(View.GONE);status.setText("Ranking nearby Ride Nights…");
+        String filter=city.getText().toString().trim();
+        rpc("discover_ride_nights",object("p_city",filter,"p_offset",0),(ok,m,b)->{
+            if(!ok){status.setText(m+" • Run the v9.0 Ride Nights migration");return;}
+            try{JSONArray list=new JSONArray(b);for(int i=0;i<list.length();i++)addEvent(list.getJSONObject(i));status.setText("Smart discovery • "+list.length()+" ranked events");}
+            catch(Exception e){status.setText("Unable to read discovery results");}
         });
     }
 

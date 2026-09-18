@@ -20,8 +20,8 @@ android {
         applicationId 'com.stankhouse.scooterspeedometer'
         minSdk 23
         targetSdk 35
-        versionCode 94
-        versionName '8.9.0'
+        versionCode 100
+        versionName '9.0.0'
     }
 
     buildTypes {
@@ -34,4 +34,9 @@ android {
             minifyEnabled false
         }
     }
+}
+
+dependencies {
+    implementation 'com.google.zxing:core:3.5.3'
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
 }

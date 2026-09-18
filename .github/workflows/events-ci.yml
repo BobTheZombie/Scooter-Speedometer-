@@ -53,3 +53,6 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f supabase/riderlink_events.sql
           psql -v ON_ERROR_STOP=1 -f supabase/riderlink_events.sql
           psql -v ON_ERROR_STOP=1 -f tests/events_permissions.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/riderlink_ride_nights_v90.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/riderlink_ride_nights_v90.sql
+          psql -v ON_ERROR_STOP=1 -f tests/ride_nights_v90_permissions.sql
