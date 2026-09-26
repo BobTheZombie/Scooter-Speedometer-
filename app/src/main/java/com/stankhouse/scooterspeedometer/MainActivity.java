@@ -52,6 +52,7 @@ import android.widget.TextView;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -373,7 +374,7 @@ public class MainActivity extends Activity implements LocationListener {
         }
         TextView note = new TextView(this); note.setText("Changes apply live to the phone's media output. Available range: −12 to +12 dB."); note.setTextColor(Color.rgb(175,195,205)); note.setPadding(6,14,6,8); panel.addView(note);
         scroll.addView(panel);
-        new AlertDialog.Builder(this).setTitle("7-BAND PARAMETRIC EQ").setMessage((audioRack.eqAvailable()?"Shape the output curve":"This phone currently blocks the system EQ effect")+"\n"+audioRack.oemName())
+        new AlertDialog.Builder(this).setTitle("7-BAND PARAMETRIC EQ").setMessage((audioRack.eqAvailable()?audioRack.engineName()+"\n"+audioRack.status():"This phone currently blocks the system EQ effect")+"\n"+audioRack.oemName())
                 .setView(scroll).setNeutralButton("FLAT",(d,w)->{audioRack.flat();showEqualizer();})
                 .setNegativeButton("OEM AUDIO",(d,w)->openOemAudio()).setPositiveButton("DONE",null).show();
     }
@@ -388,7 +389,7 @@ public class MainActivity extends Activity implements LocationListener {
         TextView warning = new TextView(this); warning.setText("Use only enough gain to overcome quiet recordings. Heavy boost can cause clipping, distortion, or speaker damage."); warning.setTextColor(Color.rgb(255,185,110)); warning.setPadding(8,18,8,8); panel.addView(warning);
         enabled.setOnCheckedChangeListener((button,on)->{audioRack.setAmpEnabled(on);if(speedView!=null)speedView.invalidate();});
         slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar b,int p,boolean user){audioRack.setAmplifierGain(p*100);value.setText("Gain  +"+p+".0 dB");}public void onStartTrackingTouch(SeekBar b){}public void onStopTrackingTouch(SeekBar b){}});
-        new AlertDialog.Builder(this).setTitle("MEDIA AMPLIFIER").setMessage((audioRack.ampAvailable()?"Digital gain stage":"This phone currently blocks the amplifier effect")+"\n"+audioRack.oemName())
+        new AlertDialog.Builder(this).setTitle("MEDIA AMPLIFIER").setMessage((audioRack.ampAvailable()?audioRack.engineName()+"\n"+audioRack.status():"This phone currently blocks the amplifier effect")+"\n"+audioRack.oemName())
                 .setView(panel).setNegativeButton("OEM AUDIO",(d,w)->openOemAudio()).setPositiveButton("DONE",null).show();
     }
 
@@ -1474,6 +1475,11 @@ public class MainActivity extends Activity implements LocationListener {
             text(c, "TRIP", w * .73f, h * .825f, 16f * scale, Color.rgb(160,180,190), Paint.Align.CENTER, true);
             text(c, String.format(Locale.US, "%.2f %s", tripShown, metric ? "km" : "mi"),
                     w * .73f, h * .885f, 26f * scale, Color.WHITE, Paint.Align.CENTER, true);
+            String clockPattern=android.text.format.DateFormat.is24HourFormat(MainActivity.this)?"HH:mm":"h:mm a";
+            String clock=new java.text.SimpleDateFormat(clockPattern,Locale.getDefault()).format(new Date());
+            text(c,"TIME",cx,h*.825f,12f*scale,Color.rgb(160,180,190),Paint.Align.CENTER,true);
+            text(c,clock,cx,h*.872f,22f*scale,accentColor(),Paint.Align.CENTER,true);
+            postInvalidateDelayed(1000L-(System.currentTimeMillis()%1000L));
             text(c, "Tap gauge: MPH/KM/H  •  Hold gauge: reset", cx, h * .965f,
                     13f * scale, Color.rgb(120,145,157), Paint.Align.CENTER, false);
             paint.setColor(Color.argb(72, 4, 18, 24));RectF systemDock=new RectF(w*.012f,h*.902f,w*.988f,h*.96f);c.drawRoundRect(systemDock,19f*scale,19f*scale,paint);paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1f*scale);paint.setColor(Color.argb(90,75,140,155));c.drawRoundRect(systemDock,19f*scale,19f*scale,paint);paint.setStyle(Paint.Style.FILL);

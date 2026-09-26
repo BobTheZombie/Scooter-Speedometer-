@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.media.audiofx.AudioEffect;
+import android.media.audiofx.DynamicsProcessing;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.LoudnessEnhancer;
 import android.os.Build;
@@ -13,6 +14,7 @@ public final class AudioRack {
     public static final int[] FREQUENCIES = {60, 150, 400, 1000, 2400, 6000, 14000};
     private final SharedPreferences prefs;
     private final Context context;
+    private DynamicsProcessing dsp;
     private Equalizer equalizer;
     private LoudnessEnhancer amplifier;
     private String status = "READY";
@@ -26,8 +28,18 @@ public final class AudioRack {
     private void open() {
         release();
         notifyEffectSession(true);
+        if (Build.VERSION.SDK_INT >= 28) {
+            try {
+                DynamicsProcessing.Config config = new DynamicsProcessing.Config.Builder(
+                        0, 2, true, FREQUENCIES.length, false, 0,
+                        false, 0, true).build();
+                dsp = new DynamicsProcessing(Integer.MAX_VALUE, 0, config);
+                applyDsp();
+                return;
+            } catch (Throwable error) { dsp = null; status = "MODERN DSP UNAVAILABLE — USING COMPATIBILITY ENGINE"; }
+        }
         try {
-            equalizer = new Equalizer(0, 0);
+            equalizer = new Equalizer(Integer.MAX_VALUE, 0);
             applyEqualizer();
         } catch (Throwable error) { equalizer = null; status = "EQ NOT SUPPORTED BY THIS PHONE"; }
         try {
@@ -49,23 +61,43 @@ public final class AudioRack {
         if(maker.equalsIgnoreCase("motorola"))return "Motorola Audio Effects / Dolby";
         return maker+" Android audio effects";
     }
-    public boolean eqAvailable() { return equalizer != null; }
-    public boolean ampAvailable() { return amplifier != null; }
+    public boolean eqAvailable() { return dsp != null || equalizer != null; }
+    public boolean ampAvailable() { return dsp != null || amplifier != null; }
+    public boolean modernDsp() { return dsp != null; }
+    public String engineName() { return dsp != null ? "Rider DSP • 7-band EQ + preamp + limiter" : "Android compatibility audio engine"; }
 
-    public void setEqEnabled(boolean value) { prefs.edit().putBoolean("eq_enabled", value).apply(); applyEqualizer(); }
-    public void setAmpEnabled(boolean value) { prefs.edit().putBoolean("amp_enabled", value).apply(); applyAmplifier(); }
+    public void setEqEnabled(boolean value) { prefs.edit().putBoolean("eq_enabled", value).apply(); apply(); }
+    public void setAmpEnabled(boolean value) { prefs.edit().putBoolean("amp_enabled", value).apply(); apply(); }
     public void setGain(int index, int db) {
         prefs.edit().putInt("band_" + index, Math.max(-12, Math.min(12, db))).apply();
-        applyEqualizer();
+        apply();
     }
     public void setAmplifierGain(int millibels) {
         prefs.edit().putInt("amp_gain", Math.max(0, Math.min(1200, millibels))).apply();
-        applyAmplifier();
+        apply();
     }
     public void flat() {
         SharedPreferences.Editor editor = prefs.edit();
         for (int i = 0; i < FREQUENCIES.length; i++) editor.putInt("band_" + i, 0);
-        editor.apply(); applyEqualizer();
+        editor.apply(); apply();
+    }
+
+    private void apply() { if (dsp != null) applyDsp(); else { applyEqualizer(); applyAmplifier(); } }
+
+    private void applyDsp() {
+        if (dsp == null || Build.VERSION.SDK_INT < 28) return;
+        try {
+            dsp.setInputGainAllChannelsTo(ampEnabled() ? amplifierGain() / 100f : 0f);
+            for (int band = 0; band < FREQUENCIES.length; band++) {
+                float db = eqEnabled() ? gain(band) : 0f;
+                dsp.setPreEqBandAllChannelsTo(band,
+                        new DynamicsProcessing.EqBand(true, FREQUENCIES[band], db));
+            }
+            dsp.setLimiterAllChannelsTo(new DynamicsProcessing.Limiter(
+                    true, true, 0, 1f, 60f, 20f, -1f, 0f));
+            dsp.setEnabled(eqEnabled() || ampEnabled());
+            status = dsp.hasControl() ? "RIDER DSP ACTIVE" : "DSP CONTROL HELD BY ANOTHER AUDIO APP";
+        } catch (Throwable error) { status = "DSP UNAVAILABLE ON CURRENT OUTPUT"; }
     }
 
     private void applyEqualizer() {
@@ -103,7 +135,7 @@ public final class AudioRack {
         } catch (Throwable error) { status = "AMP UNAVAILABLE ON CURRENT OUTPUT"; }
     }
 
-    public void refresh() { if (equalizer == null || amplifier == null) open(); else { applyEqualizer(); applyAmplifier(); } }
+    public void refresh() { if (dsp == null && (equalizer == null || amplifier == null)) open(); else apply(); }
 
     public boolean openOemPanel(Context activityContext) {
         String maker=Build.MANUFACTURER==null?"":Build.MANUFACTURER.toLowerCase();
@@ -137,9 +169,10 @@ public final class AudioRack {
     }
 
     public void release() {
+        try { if (dsp != null) dsp.release(); } catch (Throwable ignored) { }
         try { if (equalizer != null) equalizer.release(); } catch (Throwable ignored) { }
         try { if (amplifier != null) amplifier.release(); } catch (Throwable ignored) { }
-        equalizer = null; amplifier = null;
+        dsp = null; equalizer = null; amplifier = null;
         notifyEffectSession(false);
     }
 }
