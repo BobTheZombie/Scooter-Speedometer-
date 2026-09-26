@@ -140,7 +140,7 @@ public class MainActivity extends Activity implements LocationListener {
         deliveryCockpit = new DeliveryCockpit(this);
         rideRecorder = new RideRecorder(this);
         crashDetector = new CrashDetector(this,force -> runOnUiThread(this::showCrashCheckIn));
-        updateManager = new UpdateManager(this);
+        if(!BuildConfig.PLAY_STORE_BUILD)updateManager = new UpdateManager(this);
         riderCopilot = new RiderCopilot(this, this::setHudVoiceStatus);
         crashDetector.setEnabled(prefs.getBoolean("crash_detection",false));
         weatherData = weatherRepository.cached();
@@ -151,7 +151,7 @@ public class MainActivity extends Activity implements LocationListener {
         IntentFilter hudFilter=new IntentFilter(MediaAccessService.ACTION_HUD_UPDATE);
         if(Build.VERSION.SDK_INT>=33)registerReceiver(hudReceiver,hudFilter,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(hudReceiver,hudFilter);
         enterImmersive();
-        updateManager.check(false);
+        if(updateManager!=null)updateManager.check(false);
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
                     Manifest.permission.POST_NOTIFICATIONS}, LOCATION_REQUEST);
@@ -715,7 +715,7 @@ public class MainActivity extends Activity implements LocationListener {
                     "Voice, spoken alerts, HUD reading and ride briefings",
                     "DoorDash offers, delivery shifts and mileage",
                     "Save and restore three complete cockpit arrangements",
-                    "Check GitHub for a signed production release"};
+                    BuildConfig.PLAY_STORE_BUILD?"Updates are delivered securely by Google Play":"Check GitHub for a signed production release"};
             showPolishedMenu("SETTINGS","Personalize the entire riding system",choices,details,which -> {
                         if (which == 0) showRideCenter();
                         else if (which == 1) showLayoutMenu();
@@ -725,7 +725,7 @@ public class MainActivity extends Activity implements LocationListener {
                         else if (which == 5) showCopilotSettings();
                         else if (which == 6) showDasherSettings();
                         else if(which==7)showProfilesMenu();
-                        else updateManager.check(true);
+                        else if(BuildConfig.PLAY_STORE_BUILD){try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("market://details?id="+getPackageName())));}catch(Exception e){startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://play.google.com/store/apps/details?id="+getPackageName())));}}else updateManager.check(true);
                     });
         }
 
