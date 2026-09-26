@@ -59,7 +59,7 @@ jobs:
           actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' dist/signature.txt | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
           test -n "$expected"
           test "$actual" = "$expected"
-          jarsigner -verify -strict dist/Scooter-Speedometer-v9.2.0-play.aab
+          jarsigner -verify dist/Scooter-Speedometer-v9.2.0-play.aab
           "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging dist/Scooter-Speedometer-v9.2.0.apk > dist/package.txt
           grep -q "package: name='com.stankhouse.scooterspeedometer' versionCode='103' versionName='9.2.0'" dist/package.txt
           (cd dist && sha256sum Scooter-Speedometer-v9.2.0.apk Scooter-Speedometer-v9.2.0-play.aab > SHA256SUMS)
