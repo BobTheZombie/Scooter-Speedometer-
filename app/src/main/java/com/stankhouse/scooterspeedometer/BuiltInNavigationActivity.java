@@ -84,6 +84,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private OfflineRegionManager offlineRegions;
     private SharedPreferences navPrefs;
     private boolean waitingForNetwork;
+    private int engineClass;
     private final Runnable routeRecovery=new Runnable(){@Override public void run(){if(waitingForNetwork&&!isFinishing()){lastRouteRequest=0;requestRoute();main.postDelayed(this,15000L);}}};
 
     @Override protected void onCreate(Bundle state) {
@@ -91,7 +92,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         Fullscreen.apply(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         destinationQuery = getIntent().getStringExtra("destination");destinationLabel=destinationQuery;
-        navPrefs=getSharedPreferences("speedometer",MODE_PRIVATE);
+        navPrefs=getSharedPreferences("speedometer",MODE_PRIVATE);engineClass=Math.max(0,Math.min(3,navPrefs.getInt("nav_engine_class",0)));
         locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         flockCameras = new FlockCameraProvider(this);
         policeProvider = new PoliceSightingProvider();
@@ -127,6 +128,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         Button close = new Button(this); close.setText("×"); close.setTextSize(22);UiKit.button(close,Color.rgb(40,55,62)); close.setOnClickListener(v -> finish());
         FrameLayout.LayoutParams closeParams = new FrameLayout.LayoutParams(dp(44), dp(44));
         closeParams.gravity = Gravity.BOTTOM | Gravity.RIGHT; closeParams.setMargins(0,0,dp(4),dp(18)); root.addView(close, closeParams);
+        Button mode=new Button(this);mode.setText(engineLabel());mode.setTextSize(11);UiKit.button(mode,Color.rgb(30,70,82));mode.setOnClickListener(v->chooseEngineClass(mode));FrameLayout.LayoutParams modeParams=new FrameLayout.LayoutParams(dp(92),dp(44));modeParams.gravity=Gravity.BOTTOM|Gravity.LEFT;modeParams.setMargins(dp(4),0,0,dp(18));root.addView(mode,modeParams);
         setContentView(root);
         requestLocation();
     }
@@ -136,6 +138,8 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         result.setBackgroundColor(background); result.setGravity(gravity); result.setPadding(dp(padding), 0, dp(padding), 0);
         result.setText("Finding your location…"); return result;
     }
+    private String engineLabel(){return new String[]{"50cc SAFE","125cc","150cc","250cc"}[engineClass];}
+    private void chooseEngineClass(Button button){String[] modes={"50cc • local roads only","125cc • city and county roads","150cc • highways discouraged","250cc • full-road capable"};new AlertDialog.Builder(this).setTitle("Scooter route profile").setSingleChoiceItems(modes,engineClass,(d,w)->{engineClass=w;navPrefs.edit().putInt("nav_engine_class",w).apply();button.setText(engineLabel());d.dismiss();if(hasDestination){lastRouteRequest=0;requestRoute();}}).setNegativeButton("Cancel",null).show();}
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
     private void requestLocation() {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) { finish(); return; }
@@ -174,7 +178,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
         instruction.setText("OpenNAV+ • Calculating scooter route…");
         network.execute(() -> {
             try {
-                boolean avoid=navPrefs.getBoolean("opennav_avoid_highways",true);String base = String.format(Locale.US, "https://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true&alternatives=true", lon, lat, destinationLongitude, destinationLatitude);
+                boolean avoid=engineClass<3||navPrefs.getBoolean("opennav_avoid_highways",true);String base = String.format(Locale.US, "https://router.project-osrm.org/route/v1/driving/%.6f,%.6f;%.6f,%.6f?overview=full&geometries=geojson&steps=true&alternatives=true", lon, lat, destinationLongitude, destinationLatitude);
                 JSONObject response;boolean compatibilityFallback=false;
                 if(avoid){try{response=fetchRoute(base+"&exclude=motorway");}catch(Exception unsupported){response=fetchRoute(base);compatibilityFallback=true;}}else response=fetchRoute(base);
                 JSONArray candidates=response.getJSONArray("routes");if(candidates.length()==0)throw new Exception("No route was returned");JSONObject route=avoid?bestScooterCandidate(candidates):candidates.getJSONObject(0);
@@ -188,7 +192,7 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     }
     private JSONObject fetchRoute(String endpoint)throws Exception{HttpURLConnection c=null;try{c=open(new URL(endpoint));int status=c.getResponseCode();if(status<200||status>=300)throw new Exception("routing HTTP "+status);JSONObject response=new JSONObject(read(c));String code=response.optString("code","");if(!"Ok".equalsIgnoreCase(code))throw new Exception(response.optString("message",code.isEmpty()?"route rejected":code));return response;}finally{if(c!=null)c.disconnect();}}
     private JSONObject bestScooterCandidate(JSONArray routes)throws Exception{JSONObject best=routes.getJSONObject(0);double bestScore=scooterPenalty(best);for(int i=1;i<routes.length();i++){JSONObject candidate=routes.getJSONObject(i);double score=scooterPenalty(candidate);if(score<bestScore){best=candidate;bestScore=score;}}return best;}
-    private double scooterPenalty(JSONObject route)throws Exception{double score=route.optDouble("duration",0)/60d;JSONArray legs=route.getJSONArray("legs");for(int l=0;l<legs.length();l++){JSONArray routeSteps=legs.getJSONObject(l).getJSONArray("steps");for(int i=0;i<routeSteps.length();i++){JSONObject step=routeSteps.getJSONObject(i);String road=(step.optString("name","")+" "+step.optString("ref","")).toUpperCase(Locale.US);String maneuver=step.optJSONObject("maneuver")==null?"":step.optJSONObject("maneuver").optString("type","");if(road.matches(".*(^|[^A-Z])I[- ]?\\d+.*")||road.contains("INTERSTATE"))score+=10000;if(maneuver.contains("ramp"))score+=600;}}return score;}
+    private double scooterPenalty(JSONObject route)throws Exception{double score=route.optDouble("duration",0)/60d;JSONArray legs=route.getJSONArray("legs");for(int l=0;l<legs.length();l++){JSONArray routeSteps=legs.getJSONObject(l).getJSONArray("steps");for(int i=0;i<routeSteps.length();i++){JSONObject step=routeSteps.getJSONObject(i);String road=(step.optString("name","")+" "+step.optString("ref","")).toUpperCase(Locale.US);String maneuver=step.optJSONObject("maneuver")==null?"":step.optJSONObject("maneuver").optString("type","");boolean interstate=road.matches(".*(^|[^A-Z])I[- ]?\\d+.*")||road.contains("INTERSTATE");boolean highway=road.matches(".*(^|[^A-Z])(US|M)[- ]?\\d+.*")||road.contains("HIGHWAY");if(interstate)score+=engineClass==3?180:10000;if(highway)score+=new int[]{1200,260,120,20}[engineClass];if(maneuver.contains("ramp"))score+=new int[]{1800,700,350,50}[engineClass];}}return score;}
     private void cacheRoute(JSONObject route){try{navPrefs.edit().putString("opennav_cached_route",route.toString()).putString("opennav_cached_destination",destinationLabel==null?"":destinationLabel).putLong("opennav_cached_at",System.currentTimeMillis()).apply();}catch(Exception ignored){}}
     private boolean restoreCachedRoute(){try{String raw=navPrefs.getString("opennav_cached_route","");String saved=navPrefs.getString("opennav_cached_destination","");if(raw.isEmpty()||destinationLabel==null||!saved.equalsIgnoreCase(destinationLabel)||System.currentTimeMillis()-navPrefs.getLong("opennav_cached_at",0)>7L*24L*60L*60L*1000L)return false;JSONObject route=new JSONObject(raw);String geometry=route.getJSONObject("geometry").toString();List<RouteStep> parsed=parseSteps(route.getJSONArray("legs").getJSONObject(0).getJSONArray("steps"));List<RoutePoint> shape=parseRouteShape(route.getJSONObject("geometry"));applyRoute(geometry,parsed,shape,route.getDouble("distance"),route.getDouble("duration"));return true;}catch(Exception ignored){return false;}}
     private HttpURLConnection open(URL url) throws Exception {
@@ -225,9 +229,9 @@ public class BuiltInNavigationActivity extends Activity implements LocationListe
     private List<RoutePoint> parseRouteShape(JSONObject geometry)throws Exception{List<RoutePoint> result=new ArrayList<>();JSONArray coordinates=geometry.getJSONArray("coordinates");for(int i=0;i<coordinates.length();i++){JSONArray p=coordinates.getJSONArray(i);result.add(new RoutePoint(p.getDouble(1),p.getDouble(0)));}return result;}
     private void applyRoute(String geometry, List<RouteStep> parsed, List<RoutePoint> shape, double distance, double duration) {
         steps.clear(); steps.addAll(parsed); stepIndex = Math.min(1, Math.max(0, steps.size() - 1)); lastSpokenStep = -1;spokenStage=0;offRouteSince=0;
-        routePoints.clear();routePoints.addAll(shape);routeDurationSeconds=duration;
+        routePoints.clear();routePoints.addAll(shape);double classSeconds=(distance/1609.344)/new double[]{30d,45d,52d,58d}[engineClass]*3600d;duration=Math.max(duration,classSeconds);routeDurationSeconds=duration;
         if (mapReady) map.evaluateJavascript("setRoute(" + geometry + ")", null);
-        routeSummary=String.format(Locale.US, "%.1f mi  •  %d min  •  ETA %s  •  OpenNAV+", distance / 1609.344, Math.round(duration / 60),new java.text.SimpleDateFormat("h:mm a",Locale.US).format(new java.util.Date(System.currentTimeMillis()+(long)(duration*1000))));tripInfo.setText(routeSummary);
+        routeSummary=String.format(Locale.US, "%s • %.1f mi • %d min • ETA %s",engineLabel(),distance / 1609.344, Math.round(duration / 60),new java.text.SimpleDateFormat("h:mm a",Locale.US).format(new java.util.Date(System.currentTimeMillis()+(long)(duration*1000))));tripInfo.setText(routeSummary);
         if(routeWeather!=null){routeWeatherLastCheck=System.currentTimeMillis();routeWeather.check(routeLocations(),duration,summary->{if(!summary.isEmpty())tripInfo.setText(routeSummary+"\n⚠ "+summary);});}
         if(guidanceActive){goButton.setVisibility(View.GONE);if(!steps.isEmpty())instruction.setText(steps.get(stepIndex).instruction);if(mapReady)map.evaluateJavascript("startGuidance()",null);}else{goButton.setVisibility(View.VISIBLE);instruction.setText("Route ready • Review the route, then tap GO");}
     }

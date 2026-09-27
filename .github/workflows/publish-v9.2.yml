@@ -1,4 +1,4 @@
-name: Publish v9.2.0 Play Store readiness release
+name: Publish v9.3.0 RiderLink+ platform release
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: publish-v9.2.0
+  group: publish-v9.3.0
   cancel-in-progress: false
 
 jobs:
@@ -51,33 +51,34 @@ jobs:
       - name: Verify and publish
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/github/release/app-github-release.apk dist/Scooter-Speedometer-v9.2.0.apk
-          cp app/build/outputs/bundle/playRelease/app-play-release.aab dist/Scooter-Speedometer-v9.2.0-play.aab
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs dist/Scooter-Speedometer-v9.2.0.apk > dist/signature.txt
+          cp app/build/outputs/apk/github/release/app-github-release.apk dist/Scooter-Speedometer-v9.3.0.apk
+          cp app/build/outputs/bundle/playRelease/app-play-release.aab dist/Scooter-Speedometer-v9.3.0-play.aab
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs dist/Scooter-Speedometer-v9.3.0.apk > dist/signature.txt
           cat dist/signature.txt
           expected=$(sed 's/.*SHA256: //' signing/v8-release-fingerprint.txt | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
           actual=$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' dist/signature.txt | tr -d ':[:space:]' | tr '[:upper:]' '[:lower:]')
           test -n "$expected"
           test "$actual" = "$expected"
-          jarsigner -verify dist/Scooter-Speedometer-v9.2.0-play.aab
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging dist/Scooter-Speedometer-v9.2.0.apk > dist/package.txt
-          grep -q "package: name='com.stankhouse.scooterspeedometer' versionCode='103' versionName='9.2.0'" dist/package.txt
-          (cd dist && sha256sum Scooter-Speedometer-v9.2.0.apk Scooter-Speedometer-v9.2.0-play.aab > SHA256SUMS)
-          gh release create v9.2.0 \
-            dist/Scooter-Speedometer-v9.2.0.apk dist/Scooter-Speedometer-v9.2.0-play.aab dist/SHA256SUMS \
-            supabase/riderlink_play_billing_v92.sql \
-            --target "$GITHUB_SHA" --title "Scooter Speedometer v9.2 • Founding Riders" \
+          jarsigner -verify dist/Scooter-Speedometer-v9.3.0-play.aab
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging dist/Scooter-Speedometer-v9.3.0.apk > dist/package.txt
+          grep -q "package: name='com.stankhouse.scooterspeedometer' versionCode='104' versionName='9.3.0'" dist/package.txt
+          (cd dist && sha256sum Scooter-Speedometer-v9.3.0.apk Scooter-Speedometer-v9.3.0-play.aab > SHA256SUMS)
+          gh release create v9.3.0 \
+            dist/Scooter-Speedometer-v9.3.0.apk dist/Scooter-Speedometer-v9.3.0-play.aab dist/SHA256SUMS \
+            supabase/riderlink_play_billing_v92.sql supabase/riderlink_plus_v93.sql \
+            --target "$GITHUB_SHA" --title "Scooter Speedometer v9.3 • RiderLink+ Platform" \
             --notes-file - <<'NOTES'
-          - Google Play Billing 9.1 with server-verified and restorable purchases
-          - Founding 1,000: $9.99 Pro purchase grants lifetime RiderLink+
-          - Post-founder catalog: $4.99 lifetime Pro and $6.99/month RiderLink+
-          - Atomic Supabase founder counter and replay-resistant purchase-token records
-          - Developer unlimited access and existing membership codes preserved
-          - Android 16 / API 36 target and signed Play App Bundle
-          - Separate Play flavor removes APK self-install permission and uses Play updates
+          - New RiderLink+ command center for every premium network service
+          - Live Group Ride convoy map, leader gap alerts and quick regroup signals
+          - 50cc, 125cc, 150cc and 250cc navigation profiles with realistic ETAs
+          - Ride Guardian live trips, trusted riders and overdue check-ins
+          - Mechanical Rescue Network 2.0 helper tools and availability profiles
+          - Smart Ride Nights, route voting, event chat and emergency meet-points
+          - Verified Rider Reputation badges and rotating QR Ride Pass
+          - Weather Ride Window score with rain, gust and safety guidance
 
           Before uploading the AAB, configure the three products, deploy the attached SQL and verification Edge Function, and add the Google Play service-account secret described in docs/PLAY_STORE_RELEASE.md.
-          Android 6.0+ • versionCode 103
+          Android 6.0+ • versionCode 104
           NOTES
       - name: Remove plaintext signing key
         if: always()

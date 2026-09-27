@@ -122,7 +122,7 @@ public class RiderLinkActivity extends Activity implements LocationListener {
         header.addView(UiKit.header(this,"◉",client.plusActive()?"RiderLink+":"RiderLink",client.membershipAdmin()?"DEVELOPER • UNLIMITED":"RIDER NETWORK"),new LinearLayout.LayoutParams(0,dp(68),1));
         Button socialButton = UiKit.iconButton(this,"♟","Social",UiKit.SURFACE_ACTIVE);socialButton.setTextSize(11);socialButton.setPadding(dp(5),0,dp(5),0);header.addView(socialButton,new LinearLayout.LayoutParams(dp(80),dp(44)));
         Button profileButton = UiKit.iconButton(this,"●","Me",UiKit.SURFACE_HIGH);profileButton.setTextSize(11);profileButton.setPadding(dp(4),0,dp(4),0);LinearLayout.LayoutParams profileLayout=new LinearLayout.LayoutParams(dp(62),dp(44));profileLayout.setMargins(dp(6),0,0,0);header.addView(profileButton,profileLayout);root.addView(header);
-        status = title("Location sharing OFF", 13, Color.rgb(255, 176, 40)); root.addView(status, new LinearLayout.LayoutParams(-1, dp(42)));
+        status = title("Location sharing OFF • TAP FOR RIDERLINK+", 13, Color.rgb(255, 176, 40)); status.setOnClickListener(v->startActivity(new Intent(this,RiderLinkPlusHubActivity.class)));root.addView(status, new LinearLayout.LayoutParams(-1, dp(42)));
         map = new WebView(this); map.setLayerType(View.LAYER_TYPE_HARDWARE, null); WebSettings settings = map.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
         settings.setAllowFileAccess(true); settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         map.setBackgroundColor(Color.rgb(5, 10, 13)); map.getSettings().setCacheMode(WebSettings.LOAD_DEFAULT);
